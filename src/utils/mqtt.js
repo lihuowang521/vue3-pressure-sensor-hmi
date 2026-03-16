@@ -1,5 +1,6 @@
 import mqtt from "mqtt";
 import { ref } from "vue";
+import { validateSensorData } from "@/utils/sensor_data_verification.js";
 
 // 默认MQTT配置
 export const defaultMqttConfig = ref({
@@ -81,6 +82,17 @@ export const connectMqtt = () => {
         // 将二进制payload转为JSON对象（传感器数据）
         const data = JSON.parse(payload.toString());
         console.log(`收到${topic}主题的消息：`, data);
+
+        // 执行数据校验（核心逻辑）
+        const { valid, errors } = validateSensorData(data);
+
+        // 校验结果处理
+        if (!valid) {
+          // 校验失败：记录错误日志，跳过后续处理
+          console.error(`【${topic}】数据校验失败：`, errors);
+          alert(`【${topic}】数据校验失败：${errors.map((e) => e.message).join("；")}`);
+          return; // 终止后续逻辑，避免无效数据污染
+        }
 
         //保存到响应式变量
         receivedSensorData.value = data;
