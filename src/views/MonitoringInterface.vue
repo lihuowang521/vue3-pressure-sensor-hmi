@@ -1,105 +1,205 @@
 <script setup>
-import { ref } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
+import { useSensorStore } from "@/stores/sensorStore";
+import * as echarts from "echarts";
 
-let selectedSensor = ref("sensor1");
+const sensorStore = useSensorStore();
+
+// 管道/法兰选择器绑定值（字符串型：P001/F01）
+const selectedPipeId = ref("");
+const selectedFlangeId = ref("");
+// 传感器选择
+const selectedSensor = ref("sensor1");
+
+// 计算属性：提取管道/法兰列表（从Pinia的rawMqttData）
+const pipeIdList = computed(() => sensorStore.getUniquePipeIds);
+const flangeIdList = computed(() => {
+  if (!selectedPipeId.value) return [];
+  return sensorStore.getFlangeIdsByPipeId(selectedPipeId.value);
+});
 
 // 初始化图表
+let lineChart = null;
+const initChart = () => {
+  const chartDom = document.querySelector("#line-chart");
+  if (!chartDom) return;
+  // 确保图表容器有高度（和样式层联动）
+  lineChart = echarts.init(chartDom);
+  const option = {
+    xAxis: { type: "category", data: [] },
+    yAxis: { type: "value", name: "压力 (kPa)" },
+    series: [{ data: [], type: "line", smooth: true }],
+    tooltip: { trigger: "axis" },
+    grid: { left: "10%", right: "4%", bottom: "3%", containLabel: true },
+  };
+  lineChart.setOption(option);
+};
 
-// 更新图表
+// 更新图表数据
+const updateChart = () => {
+  if (!selectedSensor.value || sensorStore.chartData.length === 0) {
+    lineChart?.setOption({ xAxis: { data: [] }, series: [{ data: [] }] });
+    return;
+  }
+
+  // 从chartData中提取选中传感器的数值
+  const xData = sensorStore.chartData.map((item) => item.timestamp);
+  const yData = sensorStore.chartData.map((item) => item[selectedSensor.value] || 0);
+
+  lineChart?.setOption({
+    xAxis: { data: xData },
+    series: [{ data: yData }],
+  });
+};
+
+// 监听选择器变化
+watch([selectedPipeId, selectedFlangeId], () => {
+  // 选择管道/法兰后，更新Pinia的selectedPipeline/selectedFlange
+  if (selectedPipeId.value) {
+    sensorStore.setPipelineByPipeId(selectedPipeId.value);
+  }
+  if (selectedFlangeId.value) {
+    sensorStore.setFlangeByFlangeId(selectedFlangeId.value);
+  }
+  updateChart(); // 刷新图表
+});
+
+// 传感器选择变化
+const handleSensorChange = () => {
+  updateChart();
+};
+
+// 页面初始化
+onMounted(() => {
+  initChart();
+  // 默认选中第一个管道/法兰
+  if (pipeIdList.value.length > 0) {
+    selectedPipeId.value = pipeIdList.value[0];
+    // 选管道后自动选第一个法兰
+    setTimeout(() => {
+      if (flangeIdList.value.length > 0) {
+        selectedFlangeId.value = flangeIdList.value[0];
+      }
+    }, 0);
+  }
+  // 监听图表自适应
+  window.addEventListener("resize", () => lineChart?.resize());
+  // 初始加载图表数据
+  updateChart();
+});
 </script>
 
 <template>
-  <div>
-    <main class="main-content">
-      <!-- 实时压力监控面板 -->
+  <!-- 继承全局container样式，统一页面宽度 -->
+  <div class="container">
+    <!-- 管道/法兰选择器 -->
+    <section class="selector-panel">
+      <div class="pipe-flange-selector">
+        <div class="selector-item">
+          <label for="pipe-select">选择管道：</label>
+          <select id="pipe-select" v-model="selectedPipeId" @change="selectedFlangeId = ''">
+            <option value="">请选择管道</option>
+            <option v-for="pipeId in pipeIdList" :key="pipeId" :value="pipeId">
+              {{ pipeId }}
+            </option>
+          </select>
+        </div>
+        <div class="selector-item">
+          <label for="flange-select">选择法兰：</label>
+          <select id="flange-select" v-model="selectedFlangeId" :disabled="!selectedPipeId">
+            <option value="">请选择法兰</option>
+            <option v-for="flangeId in flangeIdList" :key="flangeId" :value="flangeId">
+              {{ flangeId }}
+            </option>
+          </select>
+        </div>
+      </div>
+    </section>
+    <!-- 实时压力监控 -->
+    <div class="main-content">
       <section class="gauge-panel">
         <h2 class="panel-title">实时压力监控</h2>
-        <!-- 压力表容器 -->
         <div class="gauge-container">
-          <!-- 12个压力传感器的圆形布局 -->
           <div class="sensor-circle">
             <!-- 传感器1 (0°) -->
             <div class="sensor-item" style="--angle: 0deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器1</div>
-              <div class="sensor-value" id="sensor1">{{ sensorStore.sensorData.sensor1 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor1") }}</div>
             </div>
             <!-- 传感器2 (30°) -->
             <div class="sensor-item" style="--angle: 30deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器2</div>
-              <div class="sensor-value" id="sensor2">{{ sensorStore.sensorData.sensor2 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor2") }}</div>
             </div>
             <!-- 传感器3 (60°) -->
             <div class="sensor-item" style="--angle: 60deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器3</div>
-              <div class="sensor-value" id="sensor3">{{ sensorStore.sensorData.sensor3 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor3") }}</div>
             </div>
             <!-- 传感器4 (90°) -->
             <div class="sensor-item" style="--angle: 90deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器4</div>
-              <div class="sensor-value" id="sensor4">{{ sensorStore.sensorData.sensor4 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor4") }}</div>
             </div>
             <!-- 传感器5 (120°) -->
             <div class="sensor-item" style="--angle: 120deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器5</div>
-              <div class="sensor-value" id="sensor5">{{ sensorStore.sensorData.sensor5 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor5") }}</div>
             </div>
             <!-- 传感器6 (150°) -->
             <div class="sensor-item" style="--angle: 150deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器6</div>
-              <div class="sensor-value" id="sensor6">{{ sensorStore.sensorData.sensor6 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor6") }}</div>
             </div>
             <!-- 传感器7 (180°) -->
             <div class="sensor-item" style="--angle: 180deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器7</div>
-              <div class="sensor-value" id="sensor7">{{ sensorStore.sensorData.sensor7 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor7") }}</div>
             </div>
             <!-- 传感器8 (210°) -->
             <div class="sensor-item" style="--angle: 210deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器8</div>
-              <div class="sensor-value" id="sensor8">{{ sensorStore.sensorData.sensor8 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor8") }}</div>
             </div>
             <!-- 传感器9 (240°) -->
             <div class="sensor-item" style="--angle: 240deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器9</div>
-              <div class="sensor-value" id="sensor9">{{ sensorStore.sensorData.sensor9 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor9") }}</div>
             </div>
             <!-- 传感器10 (270°) -->
             <div class="sensor-item" style="--angle: 270deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器10</div>
-              <div class="sensor-value" id="sensor10">{{ sensorStore.sensorData.sensor10 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor10") }}</div>
             </div>
             <!-- 传感器11 (300°) -->
             <div class="sensor-item" style="--angle: 300deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器11</div>
-              <div class="sensor-value" id="sensor11">{{ sensorStore.sensorData.sensor11 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor11") }}</div>
             </div>
             <!-- 传感器12 (330°) -->
             <div class="sensor-item" style="--angle: 330deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器12</div>
-              <div class="sensor-value" id="sensor12">{{ sensorStore.sensorData.sensor12 }}</div>
+              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor12") }}</div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- 压力趋势图面板 -->
       <section class="chart-panel">
         <h2 class="panel-title">压力趋势图</h2>
-        <!-- 数据时间范围提示 -->
         <div class="time-range">最近1小时数据</div>
-        <!-- 传感器选择下拉框 -->
         <div class="sensor-selector">
           <label for="sensor-select">选择传感器：</label>
           <select
@@ -123,37 +223,31 @@ let selectedSensor = ref("sensor1");
           </select>
         </div>
         <!-- 图表容器 -->
-        <div class="chart-container" ref="chartRef"></div>
+        <div class="chart-container" id="line-chart"></div>
       </section>
-    </main>
+    </div>
+    <!-- 系统参数 -->
     <section class="bottom-section">
-      <!-- 系统参数面板 -->
       <div class="parameters-panel">
         <h2 class="panel-title">系统参数</h2>
-        <!-- 参数网格布局 -->
         <div class="parameters-grid">
-          <!-- 采样频率参数 -->
           <div class="param-item">
             <div class="param-label">采样频率</div>
             <div class="param-value">100 Hz</div>
           </div>
-          <!-- 报警上限参数 -->
           <div class="param-item">
             <div class="param-label">报警上限</div>
             <div class="param-value">200 kPa</div>
           </div>
-          <!-- 报警下限参数 -->
           <div class="param-item">
             <div class="param-label">报警下限</div>
             <div class="param-value">50 kPa</div>
           </div>
-          <!-- 通信波特率参数 -->
           <div class="param-item">
             <div class="param-label">通信波特率</div>
             <div class="param-value">115200</div>
           </div>
         </div>
-        <!-- 报警区域（默认隐藏，压力异常时显示） -->
         <div class="alert-area" id="alertArea">
           <strong>⚠️ 压力报警</strong><br />
           当前压力超出设定阈值范围
@@ -164,403 +258,36 @@ let selectedSensor = ref("sensor1");
 </template>
 
 <style scoped>
-/* 传感器圆形布局样式 */
-.gauge-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  padding: 20px;
-}
-
-/* 传感器圆形布局容器 */
-.sensor-circle {
-  position: relative;
-  width: 400px;
-  height: 400px;
-  border-radius: 50%;
-  border: 2px solid #e0e0e0;
-  background: rgba(248, 249, 250, 0.5);
-  margin: 20px auto;
-}
-
-/* 传感器项目基础样式 */
-.sensor-item {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform-origin: center;
-  transform: translate(-50%, -50%) rotate(var(--angle)) translateX(160px)
-    rotate(calc(-1 * var(--angle)));
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  min-width: 80px;
-}
-
-/* 传感器圆点 */
-.sensor-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: linear-gradient(45deg, #667eea, #764ba2);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
-}
-
-/* 传感器标签 */
-.sensor-label {
-  font-size: 12px;
-  color: #6c757d;
-  text-align: center;
-}
-
-/* 传感器数值 */
-.sensor-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: #2c3e50;
-  text-align: center;
-}
-
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .sensor-circle {
-    width: 300px;
-    height: 300px;
-  }
-
-  .sensor-item {
-    transform: translate(-50%, -50%) rotate(var(--angle)) translateX(120px)
-      rotate(calc(-1 * var(--angle)));
-  }
-}
-
-/* 页面头部样式 */
-/* 半透明背景、毛玻璃效果、圆角边框、阴影提升视觉层次感 */
-.header {
+/* 管道/法兰选择器容器：衔接全局渐变风格 */
+.selector-panel {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   border-radius: 15px;
-  padding: 20px;
-  margin-bottom: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  padding: 20px 25px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
 }
 
-/* 页面标题样式 */
-/* 设置标题颜色、大小和底部外边距 */
-.header-left h1 {
-  color: #2c3e50;
-  font-size: 28px;
-  margin-bottom: 5px;
-}
-
-/* 设备信息容器样式 */
-/* 使用flex布局排列设备信息项 */
-.device-info {
+.pipe-flange-selector {
   display: flex;
-  gap: 30px;
+  gap: 20px;
+  justify-content: center;
   align-items: center;
 }
 
-/* 设备型号文本样式 */
-.device-name {
-  font-size: 16px;
-  color: #7f8c8d;
-}
-
-/* 当前时间显示样式 */
-.current-time {
-  font-size: 16px;
-  color: #2c3e50;
-  font-weight: 500;
-}
-
-/* 设备状态容器样式 */
-/* 使用flex布局对齐状态指示灯和文本 */
-.status {
+.selector-item {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-/* 状态指示灯样式 */
-/* 圆形绿灯表示设备在线，应用pulse动画实现呼吸灯效果 */
-.status-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #27ae60;
-  animation: pulse 2s infinite;
-}
-
-/* 脉冲动画：实现状态灯的闪烁效果 */
-/* 脉冲动画定义 */
-/* 通过改变透明度实现呼吸灯效果 */
-@keyframes pulse {
-  0% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.5;
-  }
-
-  100% {
-    opacity: 1;
-  }
-}
-
-/* 主要内容区域布局 */
-/* 使用grid布局创建两列布局，设置列间距 */
-.main-content {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-/* 面板基础样式 */
-/* 半透明背景、毛玻璃效果、圆角边框和阴影，应用于所有面板 */
-.gauge-panel,
-.chart-panel {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 15px;
-  padding: 25px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-}
-
-/* 面板标题样式 */
-.panel-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #2c3e50;
-  margin-bottom: 20px;
-  text-align: center;
-}
-
-/* 仪表盘容器样式 */
-/* 使用flex垂直布局，居中对齐内容 */
-.gauge-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0px;
-}
-
-/* 压力数值显示样式 */
-/* 大字体、粗体、红色突出显示当前压力值 */
-.pressure-value {
-  font-size: 48px;
-  font-weight: bold;
-  color: #e74c3c;
-  text-align: center;
-}
-
-/* 压力单位样式 */
-/* 较小字体、灰色显示单位信息 */
-.pressure-unit {
-  font-size: 18px;
-  color: #7f8c8d;
-  margin-left: 5px;
-}
-
-/* 仪表盘基础样式 */
-/* 设置仪表盘尺寸和定位 */
-.gauge {
-  width: 500px;
-  height: 400px;
-  position: relative;
-  margin: 0 auto;
-}
-
-/* 图表容器样式 */
-/* 设置图表高度和定位 */
-.chart-container {
-  height: 300px;
-  position: relative;
-}
-
-/* 图表样式 */
-/* 格子背景图案，用于在图表未加载时显示 */
-.chart-placeholder {
-  width: 100%;
-  height: 100%;
-  background:
-    linear-gradient(45deg, #f8f9fa 25%, transparent 25%),
-    linear-gradient(-45deg, #f8f9fa 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #f8f9fa 75%),
-    linear-gradient(-45deg, transparent 75%, #f8f9fa 75%);
-  background-size: 20px 20px;
-  background-position:
-    0 0,
-    0 10px,
-    10px -10px,
-    -10px 0px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #6c757d;
-  font-size: 16px;
-}
-
-/* 底部区域布局 */
-/* 使用grid布局创建2:1比例的两列布局 */
-.bottom-section {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 20px;
-}
-
-/* 参数面板和控制面板样式 */
-/* 与其他面板相同的半透明背景和阴影效果 */
-.parameters-panel,
-.controls-panel {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 15px;
-  padding: 25px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-}
-
-/* 参数网格布局 */
-/* 使用auto-fit自动调整列数，每列最小宽度200px */
-.parameters-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-}
-
-/* 参数项样式 */
-/* 每个参数的卡片样式，包含背景色和圆角 */
-.param-item {
-  text-align: center;
-  padding: 15px;
-  background: #f8f9fa;
-  border-radius: 10px;
-}
-
-/* 参数标签样式 */
-.param-label {
-  font-size: 14px;
-  color: #6c757d;
-  margin-bottom: 5px;
-}
-
-/* 参数值样式 */
-/* 突出显示参数数值 */
-.param-value {
-  font-size: 20px;
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-/* 报警区域基础样式 */
-/* 红色背景和边框，默认隐藏 */
-.alert-area {
-  background: #fff5f5;
-  border: 2px solid #fed7d7;
-  border-radius: 10px;
-  padding: 15px;
-  margin-top: 20px;
-  text-align: center;
-  color: #e53e3e;
-  display: none;
-}
-
-/* 报警区域显示样式 */
-/* 添加show类时显示报警信息 */
-.alert-area.show {
-  display: block;
-}
-
-/* 控制面板网格布局 */
-/* 设置按钮间距 */
-.controls-grid {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-}
-
-/* 控制按钮基础样式 */
-/* 设置按钮尺寸、边框、圆角和过渡效果 */
-.control-btn {
-  padding: 14px 18px;
-  border: none;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  flex: 1;
-  min-width: 120px;
-  text-align: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-/* 主要按钮样式 */
-/* 紫色渐变背景 */
-.btn-primary {
-  background: linear-gradient(45deg, #667eea, #764ba2);
-  color: white;
-}
-
-/* 次要按钮样式 */
-/* 灰色背景 */
-.btn-secondary {
-  background: #6c757d;
-  color: white;
-}
-
-/* 成功按钮样式 */
-/* 绿色背景 */
-.btn-success {
-  background: #27ae60;
-  color: white;
-}
-
-/* 按钮悬停效果 */
-/* 轻微上浮和阴影加深效果 */
-.control-btn:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-  filter: brightness(1.05);
-}
-
-/* 时间范围文本样式 */
-.time-range {
-  text-align: center;
-  margin-bottom: 10px;
-  font-size: 14px;
-  color: #6c757d;
-}
-
-/* 传感器选择器样式 */
-.sensor-selector {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 15px;
-  padding: 10px;
-  background: rgba(248, 249, 250, 0.8);
-  border-radius: 8px;
-}
-
-.sensor-selector label {
+.selector-item label {
   font-size: 14px;
   color: #2c3e50;
   font-weight: 500;
 }
 
-.sensor-select {
+.selector-item select {
   padding: 8px 12px;
   border: 1px solid #ced4da;
   border-radius: 6px;
@@ -573,65 +300,220 @@ let selectedSensor = ref("sensor1");
     box-shadow 0.15s ease-in-out;
 }
 
-.sensor-select:focus {
+.selector-item select:focus {
   border-color: #667eea;
   outline: 0;
   box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
 }
 
-/* 控制面板布局调整 */
-/* 使用flex垂直布局 */
-.controls-panel {
+.selector-item select:disabled {
+  background-color: #e9ecef;
+  cursor: not-allowed;
+}
+
+/* 🔥 关键：左右布局 */
+.main-content {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+/* 左边：实时压力监控 */
+.gauge-panel {
+  flex: 0 0 50%;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   border-radius: 15px;
-  padding: 25px;
+  padding: 20px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.panel-title {
+  font-size: 18px;
+  color: #2c3e50;
   margin-bottom: 20px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.gauge-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.sensor-circle {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  height: 380px;
+  border-radius: 50%;
+  border: 2px solid #e0e0e0;
+  background: rgba(248, 249, 250, 0.5);
+}
+
+.sensor-item {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform-origin: center;
+  transform: translate(-50%, -50%) rotate(var(--angle)) translateX(150px)
+    rotate(calc(-1 * var(--angle)));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 80px;
+  text-align: center;
+}
+
+.sensor-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(45deg, #667eea, #764ba2);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+.sensor-label {
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.sensor-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+/* 右边：压力趋势图 */
+.chart-panel {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 15px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
 }
 
-/* 控制面板标题间距 */
-.controls-panel .panel-title {
-  margin-bottom: 20px;
+.time-range {
+  font-size: 14px;
+  color: #6c757d;
+  text-align: center;
+  margin-bottom: 10px;
 }
 
-/* 控制面板网格布局 */
-/* 设置网格占满剩余空间 */
-.controls-grid {
+.sensor-selector {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 15px;
+}
+
+.sensor-select {
+  padding: 8px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #495057;
+  background-color: white;
+  cursor: pointer;
+}
+
+.chart-container {
+  width: 100%;
+  height: 380px;
+  border-radius: 8px;
   flex: 1;
+  justify-content: center;
+  align-items: center;
 }
 
-/* 响应式设计 */
-/* 在小屏幕设备上（768px以下）调整布局 */
-@media (max-width: 768px) {
-  /* 主要内容区域改为单列布局 */
+/* 底部参数面板 */
+.bottom-section {
+  margin-top: 20px;
+}
+
+.parameters-panel {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 15px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.parameters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.param-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.param-label {
+  font-size: 14px;
+  color: #6c757d;
+}
+
+.param-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.alert-area {
+  background: rgba(255, 77, 77, 0.1);
+  border-left: 4px solid #ff4d4d;
+  padding: 10px 15px;
+  border-radius: 6px;
+  color: #d32f2f;
+  font-size: 14px;
+  text-align: center;
+  margin-top: 10px;
+}
+
+/* 响应式：小屏幕自动上下布局 */
+@media (max-width: 992px) {
   .main-content {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
-
-  /* 底部区域改为单列布局 */
-  .bottom-section {
-    grid-template-columns: 1fr;
+  .gauge-panel,
+  .chart-panel {
+    flex: auto;
   }
+}
 
-  /* 设备信息垂直排列 */
-  .device-info {
+@media (max-width: 768px) {
+  .pipe-flange-selector {
     flex-direction: column;
     gap: 10px;
-    text-align: center;
   }
-
-  /* 控制面板按钮垂直排列 */
-  .controls-grid {
-    flex-direction: column;
-  }
-
-  /* 控制按钮调整 */
-  .control-btn {
-    width: 100%;
+  .sensor-circle {
     max-width: 300px;
+    height: 300px;
+  }
+  .sensor-item {
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateX(120px)
+      rotate(calc(-1 * var(--angle)));
+  }
+  .chart-container {
+    height: 300px;
+  }
+  .parameters-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 </style>

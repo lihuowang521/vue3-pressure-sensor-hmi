@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { ref, computed } from "vue";
 
 export const useSensorStore = defineStore("sensor", () => {
-  // 响应式状态
+  // 保留你原有所有响应式状态
   const sensorData = ref({
     sensor1: "0.0 kPa",
     sensor2: "0.0 kPa",
@@ -23,21 +23,67 @@ export const useSensorStore = defineStore("sensor", () => {
   const historyData = ref([]);
   const chartData = ref([]);
 
-  // 计算属性
+  // 存储原始MQTT数据（用于提取管道/法兰列表）
+  const rawMqttData = ref([]);
+
+  // 获取传感器数值
   const getSensorValue = (sensorId) => {
     return sensorData.value[sensorId] || "0.0 kPa";
   };
 
-  // 方法
+  // 提取所有唯一的管道ID列表
+  const getUniquePipeIds = computed(() => {
+    const pipeIds = new Set();
+    //此方法处理可能浪费性能，因为它遍历了所有数据，可能要改
+    rawMqttData.value.forEach((item) => pipeIds.add(item.pipe_id));
+    return Array.from(pipeIds).sort();
+  });
+
+  // 根据管道ID提取对应的法兰ID列表
+  const getFlangeIdsByPipeId = (pipeId) => {
+    const flangeIds = new Set();
+    rawMqttData.value
+      .filter((item) => item.pipe_id === pipeId)
+      .forEach((item) => flangeIds.add(item.flange_id));
+    return Array.from(flangeIds).sort();
+  };
+
+  // 保存原始MQTT数据，由mqtt.js调用
+  const addRawMqttData = (data) => {
+    // 去重：避免重复添加（按pipe_id+flange_id+parsed_time）
+    const isDuplicate = rawMqttData.value.some(
+      (item) =>
+        item.pipe_id === data.pipe_id &&
+        item.flange_id === data.flange_id &&
+        item.parsed_time === data.parsed_time,
+    );
+    if (!isDuplicate) {
+      rawMqttData.value.push(data);
+      updateSensorData(data);
+    }
+  };
+
+  // 根据管道ID更新selectedPipeline（如P001 → 1）
+  const setPipelineByPipeId = (pipeId) => {
+    // 提取管道编号（P001 → 1，P002 → 2）
+    const num = pipeId.replace(/P/g, "");
+    selectedPipeline.value = parseInt(num, 10) || 1;
+  };
+
+  // 根据法兰ID更新selectedFlange（如F01 → 1）
+  const setFlangeByFlangeId = (flangeId) => {
+    // 提取法兰编号（F01 → 1，F02 → 2）
+    const num = flangeId.replace(/F/g, "");
+    selectedFlange.value = parseInt(num, 10) || 1;
+  };
+
+  // 更新传感器数值
   const updateSensorData = (data) => {
-    // 处理后端传来的数据格式
     try {
       if (data != null) {
-        // 检查数据是否为数组（可能包含多个传感器数据）
         if (Array.isArray(data)) {
-          // 处理数组格式数据
           const sensorDataMap = {};
-          let timestamp = new Date().toISOString();
+          let parsedTime = data[0]?.parsed_time || new Date().toISOString();
           data.forEach((item) => {
             if (
               item &&
@@ -46,67 +92,57 @@ export const useSensorStore = defineStore("sensor", () => {
               typeof item.pressure === "number" &&
               !isNaN(item.pressure)
             ) {
-              // 检查是否匹配当前选中的管线和法兰
               const currentPipeId = `P${String(selectedPipeline.value).padStart(3, "0")}`;
               const currentFlangeId = `F${String(selectedFlange.value).padStart(2, "0")}`;
 
-              // 只处理当前选中的管线和法兰的数据
               if (item.pipe_id === currentPipeId && item.flange_id === currentFlangeId) {
-                // 使用后端提供的时间戳（如果有）
+                // 🔥 修改2：使用后端的parsed_time
                 if (item.parsed_time) {
-                  timestamp = new Date(item.parsed_time).toISOString();
+                  parsedTime = new Date(item.parsed_time).toISOString();
                 }
                 const sensorKey = `sensor${item.sensor_position}`;
-                // 转换单位：MPa 到 kPa
                 const pressureInKPa = item.pressure * 1000;
                 if (!isNaN(pressureInKPa) && sensorData.value.hasOwnProperty(sensorKey)) {
                   sensorDataMap[sensorKey] = pressureInKPa;
-                  // 更新传感器数据
                   sensorData.value[sensorKey] = `${pressureInKPa.toFixed(1)} kPa`;
                 }
               }
             }
           });
-          // 保存到历史数据
           if (Object.keys(sensorDataMap).length > 0) {
-            saveToHistory(sensorDataMap, timestamp);
-            // 更新图表数据
-            updateChartData(sensorDataMap);
+            saveToHistory(sensorDataMap, parsedTime);
+            updateChartData(sensorDataMap, parsedTime); // 传递parsed_time
           }
         } else if (typeof data === "object") {
-          // 处理单个对象格式数据
           if (
             typeof data.sensor_position === "number" &&
             typeof data.pressure === "number" &&
             !isNaN(data.pressure)
           ) {
-            // 检查是否匹配当前选中的管线和法兰
             const currentPipeId = `P${String(selectedPipeline.value).padStart(3, "0")}`;
             const currentFlangeId = `F${String(selectedFlange.value).padStart(2, "0")}`;
 
-            // 只处理当前选中的管线和法兰的数据
             if (data.pipe_id === currentPipeId && data.flange_id === currentFlangeId) {
-              // 使用后端提供的时间戳（如果有）
-              let timestamp = new Date().toISOString();
-              if (data.parsed_time) {
-                timestamp = new Date(data.parsed_time).toISOString();
-              }
-              // 单个传感器数据
+              // 🔥 修改3：使用后端的parsed_time
+              let parsedTime = data.parsed_time
+                ? new Date(data.parsed_time).toISOString()
+                : new Date().toISOString();
               const sensorKey = `sensor${data.sensor_position}`;
-              // 转换单位：MPa 到 kPa
               const pressureInKPa = data.pressure * 1000;
               if (!isNaN(pressureInKPa) && sensorData.value.hasOwnProperty(sensorKey)) {
                 sensorData.value[sensorKey] = `${pressureInKPa.toFixed(1)} kPa`;
-                // 保存到历史数据
                 const sensorDataMap = {
                   [sensorKey]: pressureInKPa,
                 };
-                saveToHistory(sensorDataMap, timestamp);
-                updateChartData(sensorDataMap);
+                saveToHistory(sensorDataMap, parsedTime);
+                updateChartData(sensorDataMap, parsedTime); // 传递parsed_time
               }
             }
           } else {
-            // 兼容旧格式数据
+            // 🔥 修改4：兜底逻辑也优先用parsed_time
+            let parsedTime = data.parsed_time
+              ? new Date(data.parsed_time).toISOString()
+              : new Date().toISOString();
             for (const key in data) {
               if (
                 sensorData.value.hasOwnProperty(key) &&
@@ -116,8 +152,8 @@ export const useSensorStore = defineStore("sensor", () => {
                 sensorData.value[key] = `${data[key].toFixed(1)} kPa`;
               }
             }
-            saveToHistory(data);
-            updateChartData(data);
+            saveToHistory(data, parsedTime);
+            updateChartData(data, parsedTime); // 传递parsed_time
           }
         }
       }
@@ -126,32 +162,37 @@ export const useSensorStore = defineStore("sensor", () => {
     }
   };
 
-  const saveToHistory = (data, timestamp = new Date().toISOString()) => {
+  // 🔥 核心修改：saveToHistory 用 parsed_time 替换 timestamp
+  const saveToHistory = (data, parsedTime = new Date().toISOString()) => {
     const historyItem = {
-      timestamp,
+      // 替换：timestamp → parsedTime（后端的parsed_time）
+      parsed_time: parsedTime,
       pipeline: selectedPipeline.value,
       flange: selectedFlange.value,
       data: { ...data },
     };
 
     historyData.value.push(historyItem);
-
-    // 限制历史数据长度，只保留最近1000条
     if (historyData.value.length > 1000) {
       historyData.value.shift();
     }
   };
 
-  const updateChartData = (data) => {
-    const timestamp = new Date().toLocaleTimeString();
+  // 🔥 核心修改：updateChartData 用 parsed_time 替换前端生成的时间
+  const updateChartData = (data, parsedTime) => {
+    // 优先用后端的parsed_time格式化，没有则用当前时间
+    const displayTime = parsedTime
+      ? new Date(parsedTime).toLocaleTimeString()
+      : new Date().toLocaleTimeString();
+
     const newData = {
-      timestamp,
+      // 替换：timestamp → parsed_time（保留displayTime用于图表显示）
+      parsed_time: parsedTime || new Date().toISOString(),
+      displayTime: displayTime,
       ...data,
     };
 
     chartData.value.push(newData);
-
-    // 限制图表数据长度，只保留最近60个数据点
     if (chartData.value.length > 60) {
       chartData.value.shift();
     }
@@ -165,14 +206,14 @@ export const useSensorStore = defineStore("sensor", () => {
     selectedFlange.value = flange;
   };
 
+  // 🔥 修改5：导出CSV时用 parsed_time 替换 timestamp
   const exportDataToCSV = () => {
     if (historyData.value.length === 0) {
       return null;
     }
 
-    // CSV表头
     const headers = [
-      "时间戳",
+      "采集时间", // 表头从“时间戳”改为“采集时间”
       "管线",
       "法兰",
       "传感器1",
@@ -189,10 +230,9 @@ export const useSensorStore = defineStore("sensor", () => {
       "传感器12",
     ];
 
-    // 转换数据为CSV行
     const rows = historyData.value.map((item) => {
       return [
-        item.timestamp,
+        item.parsed_time, // 替换：timestamp → parsed_time
         item.pipeline,
         item.flange,
         item.data.sensor1 || 0,
@@ -210,13 +250,8 @@ export const useSensorStore = defineStore("sensor", () => {
       ];
     });
 
-    // 组合表头和数据
     const csvContent = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
-
-    // 创建Blob对象
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-
-    // 创建下载链接
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
@@ -236,7 +271,13 @@ export const useSensorStore = defineStore("sensor", () => {
     selectedFlange,
     historyData,
     chartData,
+    rawMqttData,
     getSensorValue,
+    getUniquePipeIds,
+    getFlangeIdsByPipeId,
+    addRawMqttData,
+    setPipelineByPipeId,
+    setFlangeByFlangeId,
     updateSensorData,
     setSelectedPipeline,
     setSelectedFlange,

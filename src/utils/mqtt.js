@@ -13,9 +13,7 @@ export const defaultMqttConfig = ref({
 // 连接状态
 export const isConnected = ref(false);
 
-// 🔥 新增：响应式变量保存订阅到的传感器数据（供页面使用）
 export const receivedSensorData = ref(null);
-// 🔥 新增：保存历史数据（可选，用于趋势图/历史页面）
 export const sensorDataHistory = ref([]);
 
 // 更新MQTT配置
@@ -26,7 +24,7 @@ export const updateMqttConfig = (newConfig) => {
 // MQTT客户端实例
 export let client = null;
 
-// 连接MQTT函数（补充接收消息逻辑）
+// 连接MQTT函数（最小改动适配Pinia）
 export const connectMqtt = () => {
   // 配置校验
   if (!defaultMqttConfig.value.broker) {
@@ -77,28 +75,40 @@ export const connectMqtt = () => {
       });
     });
 
-    // 🔥 核心补充：监听收到的消息（订阅数据）
-    client.on("message", (topic, payload) => {
+    // 监听收到的消息
+    client.on("message", async (topic, payload) => {
       try {
-        // 1. 将二进制payload转为JSON对象（传感器数据）
+        // 将二进制payload转为JSON对象（传感器数据）
         const data = JSON.parse(payload.toString());
         console.log(`收到${topic}主题的消息：`, data);
 
-        // 2. 保存到响应式变量（供页面实时显示）
+        //保存到响应式变量
         receivedSensorData.value = data;
 
-        // 3. 保存到历史数据（可选，限制最多100条，避免内存溢出）
-        sensorDataHistory.value.push({
+        const historyItem = {
           ...data,
-          timestamp: new Date().toLocaleString(), // 追加时间戳
-        });
-        if (sensorDataHistory.value.length > 100) {
-          sensorDataHistory.value.shift(); // 只保留最新100条
+          // 确保parsed_time存在，不存在则用当前时间兜底（避免报错）
+          parsed_time: data.parsed_time || new Date().toLocaleString(),
+        };
+        sensorDataHistory.value.push(historyItem);
+        if (sensorDataHistory.value.length > 521) {
+          sensorDataHistory.value.shift(); // 只保留最新521条
         }
 
-        // 4. 可选：保存到本地存储（持久化，页面刷新不丢失）
+        // 浏览器本地存储对象（保存最新数据和历史记录）
         localStorage.setItem("latestSensorData", JSON.stringify(receivedSensorData.value));
         localStorage.setItem("sensorDataHistory", JSON.stringify(sensorDataHistory.value));
+
+        // 同步到Pinia仓库（核心适配）
+        const sensorStore = await import("@/stores/sensorStore").then((mod) =>
+          mod.useSensorStore(),
+        );
+        // 兼容数组/单个对象格式
+        if (Array.isArray(data)) {
+          data.forEach((item) => sensorStore.addRawMqttData(item));
+        } else {
+          sensorStore.addRawMqttData(data);
+        }
       } catch (err) {
         console.error("解析MQTT消息失败：", err);
       }
@@ -137,7 +147,7 @@ export const disconnectMqtt = () => {
   }
 };
 
-// 发布消息配置
+// 发布消息配置                   现在只是一个示例，需要根据需求修改
 const publish = ref({
   topic: defaultMqttConfig.value.topic,
   payload: {
@@ -174,13 +184,26 @@ export const doPublish = () => {
   }
 };
 
-// 🔥 新增：初始化时从本地存储加载历史数据（可选）
-export const initSensorData = () => {
+// 初始化时从本地存储加载历史数据
+// 异步函数
+export const initSensorData = async () => {
   const latestData = localStorage.getItem("latestSensorData");
   const historyData = localStorage.getItem("sensorDataHistory");
+
   if (latestData) {
     receivedSensorData.value = JSON.parse(latestData);
+    // 动态导入 Pinia 仓库（避免循环导入）
+    const sensorStoreModule = await import("@/stores/sensorStore");
+    const sensorStore = sensorStoreModule.useSensorStore();
+
+    const parsedData = JSON.parse(latestData);
+    if (Array.isArray(parsedData)) {
+      parsedData.forEach((item) => sensorStore.addRawMqttData(item));
+    } else {
+      sensorStore.addRawMqttData(parsedData);
+    }
   }
+
   if (historyData) {
     sensorDataHistory.value = JSON.parse(historyData);
   }
