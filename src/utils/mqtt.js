@@ -14,7 +14,9 @@ export const defaultMqttConfig = ref({
 // 连接状态
 export const isConnected = ref(false);
 
+// 最新传感器数据（单对象）
 export const receivedSensorData = ref(null);
+// 传感器历史数据
 export const sensorDataHistory = ref([]);
 
 // 更新MQTT配置
@@ -25,7 +27,7 @@ export const updateMqttConfig = (newConfig) => {
 // MQTT客户端实例
 export let client = null;
 
-// 连接MQTT函数（最小改动适配Pinia）
+// 连接MQTT函数（适配单对象场景）
 export const connectMqtt = () => {
   // 配置校验
   if (!defaultMqttConfig.value.broker) {
@@ -76,57 +78,55 @@ export const connectMqtt = () => {
       });
     });
 
-    // 监听收到的消息
+    // 监听收到的消息（仅处理单JSON对象）
     client.on("message", async (topic, payload) => {
       try {
-        // 将二进制payload转为JSON对象（传感器数据）
+        // 1. 解析二进制payload为JSON对象
         const data = JSON.parse(payload.toString());
         console.log(`收到${topic}主题的消息：`, data);
 
-        // 执行数据校验（核心逻辑）
+        // 2. 执行数据校验（核心逻辑）
         const { valid, errors } = validateSensorData(data);
-
-        // 校验结果处理
         if (!valid) {
-          // 校验失败：记录错误日志，跳过后续处理
+          // 校验失败：记录日志+弹窗提示，终止后续处理
+          const errorMsg = errors.map((e) => e.message).join("；");
           console.error(`【${topic}】数据校验失败：`, errors);
-          alert(`【${topic}】数据校验失败：${errors.map((e) => e.message).join("；")}`);
-          return; // 终止后续逻辑，避免无效数据污染
+          alert(`【数据校验失败】${errorMsg}`);
+          return; // 跳过无效数据，避免污染存储/Pinia
         }
 
-        //保存到响应式变量
+        // 3. 校验通过：更新最新数据
         receivedSensorData.value = data;
 
+        // 4. 构建历史数据项（仅保留后端parsed_time，无前端时间戳）
         const historyItem = {
           ...data,
-          // 确保parsed_time存在，不存在则用当前时间兜底（避免报错）
+          // 兜底：确保parsed_time存在，格式统一为本地字符串
           parsed_time: data.parsed_time || new Date().toLocaleString(),
         };
         sensorDataHistory.value.push(historyItem);
+        // 只保留最新521条历史数据
         if (sensorDataHistory.value.length > 521) {
-          sensorDataHistory.value.shift(); // 只保留最新521条
+          sensorDataHistory.value.shift();
         }
 
-        // 浏览器本地存储对象（保存最新数据和历史记录）
+        // 5. 持久化到本地存储（防止页面刷新丢失）
         localStorage.setItem("latestSensorData", JSON.stringify(receivedSensorData.value));
         localStorage.setItem("sensorDataHistory", JSON.stringify(sensorDataHistory.value));
 
-        // 同步到Pinia仓库（核心适配）
+        // 6. 同步到Pinia仓库（移除数组兼容，仅处理单对象）
         const sensorStore = await import("@/stores/sensorStore").then((mod) =>
           mod.useSensorStore(),
         );
-        // 兼容数组/单个对象格式
-        if (Array.isArray(data)) {
-          data.forEach((item) => sensorStore.addRawMqttData(item));
-        } else {
-          sensorStore.addRawMqttData(data);
-        }
+        sensorStore.addRawMqttData(data); // 直接传入单对象，无需遍历
       } catch (err) {
+        // 解析失败/其他异常处理
         console.error("解析MQTT消息失败：", err);
+        alert(`消息解析失败：${err.message}`);
       }
     });
 
-    // 连接错误
+    // 连接错误处理
     client.on("error", (err) => {
       console.error("MQTT连接失败：", err);
       isConnected.value = false;
@@ -134,7 +134,7 @@ export const connectMqtt = () => {
       client = null;
     });
 
-    // 连接断开
+    // 连接断开处理
     client.on("close", () => {
       console.log("MQTT连接已断开");
       isConnected.value = false;
@@ -159,7 +159,7 @@ export const disconnectMqtt = () => {
   }
 };
 
-// 发布消息配置                   现在只是一个示例，需要根据需求修改
+// 发布消息配置（示例模板，可根据实际需求调整字段）
 const publish = ref({
   topic: defaultMqttConfig.value.topic,
   payload: {
@@ -171,52 +171,65 @@ const publish = ref({
     raw_pressure: 1.0,
     battery_voltage: 3.5,
     signal_strength: -70,
-    parsed_time: "2026-03-11 10:00:00",
+    parsed_time: new Date().toLocaleString(), // 发布时用当前时间
     is_abnormal: 0,
   },
   qos: 0,
 });
 
-// 发布消息
+// 发布消息（适配单对象）
 export const doPublish = () => {
-  const { topic, qos, payload } = publish.value;
+  // 发布前先校验数据合法性
+  const { valid, errors } = validateSensorData(publish.value.payload);
+  if (!valid) {
+    const errorMsg = errors.map((e) => e.message).join("；");
+    alert(`【发布失败】数据校验不通过：${errorMsg}`);
+    return;
+  }
 
+  const { topic, qos, payload } = publish.value;
   try {
     const jsonPayload = JSON.stringify(payload);
     client.publish(topic, jsonPayload, { qos }, (error) => {
       if (error) {
         console.error("MQTT 发布失败:", error);
+        alert(`发布失败：${error.message}`);
         return;
       }
       console.log("发布成功，原始数据：", payload);
       console.log("发布的 JSON 字符串：", jsonPayload);
+      alert("消息发布成功！");
     });
   } catch (err) {
     console.error("JSON 序列化失败:", err);
+    alert(`序列化失败：${err.message}`);
   }
 };
 
-// 初始化时从本地存储加载历史数据
-// 异步函数
+// 初始化时从本地存储加载历史数据（仅处理单对象）
 export const initSensorData = async () => {
-  const latestData = localStorage.getItem("latestSensorData");
-  const historyData = localStorage.getItem("sensorDataHistory");
+  try {
+    const latestData = localStorage.getItem("latestSensorData");
+    const historyData = localStorage.getItem("sensorDataHistory");
 
-  if (latestData) {
-    receivedSensorData.value = JSON.parse(latestData);
-    // 动态导入 Pinia 仓库（避免循环导入）
-    const sensorStoreModule = await import("@/stores/sensorStore");
-    const sensorStore = sensorStoreModule.useSensorStore();
+    // 加载最新数据到响应式变量 + Pinia
+    if (latestData) {
+      const parsedData = JSON.parse(latestData);
+      receivedSensorData.value = parsedData;
 
-    const parsedData = JSON.parse(latestData);
-    if (Array.isArray(parsedData)) {
-      parsedData.forEach((item) => sensorStore.addRawMqttData(item));
-    } else {
+      // 同步到Pinia（仅单对象）
+      const sensorStoreModule = await import("@/stores/sensorStore");
+      const sensorStore = sensorStoreModule.useSensorStore();
       sensorStore.addRawMqttData(parsedData);
     }
-  }
 
-  if (historyData) {
-    sensorDataHistory.value = JSON.parse(historyData);
+    // 加载历史数据
+    if (historyData) {
+      sensorDataHistory.value = JSON.parse(historyData);
+    }
+    console.log("本地存储数据加载完成");
+  } catch (err) {
+    console.error("初始化传感器数据失败：", err);
+    alert(`数据初始化失败：${err.message}`);
   }
 };
