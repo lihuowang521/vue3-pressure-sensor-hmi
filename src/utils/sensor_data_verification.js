@@ -54,10 +54,10 @@ function validateSingleSensorItem(item) {
       field: "pressure",
       message: `压力值（pressure）必须为有效数字（非NaN）`,
     });
-  } else if (item.pressure < 0 || item.pressure > 200) {
+  } else if (item.pressure < 0 || item.pressure > 300) {
     errors.push({
       field: "pressure",
-      message: `压力值必须在0-200kPa之间（当前值：${item.pressure}）`,
+      message: `压力值必须在0-300kPa之间（当前值：${item.pressure}）`,
     });
   }
 

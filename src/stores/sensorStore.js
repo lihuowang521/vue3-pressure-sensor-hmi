@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 
 export const useSensorStore = defineStore("sensor", () => {
-  // 传感器实时数据（1-12号传感器）
+  // 12个传感器实时数据（靠下面的loadLatestSensorData更新）
   const sensorData = ref({
     sensor1: "0.0 kPa",
     sensor2: "0.0 kPa",
@@ -17,12 +17,74 @@ export const useSensorStore = defineStore("sensor", () => {
     sensor11: "0.0 kPa",
     sensor12: "0.0 kPa",
   });
+  // 从rawMqttData中获取指定管道法兰的最新传感器数据
+  const loadLatestSensorData = (pipeId, flangeId) => {
+    try {
+      // 筛选出指定管道法兰的数据
+      const filteredData = rawMqttData.value.filter(
+        (item) => item.pipe_id === pipeId && item.flange_id === flangeId,
+      );
+
+      if (filteredData.length === 0) {
+        // 如果没有数据，重置所有传感器值
+        for (let i = 1; i <= 12; i++) {
+          sensorData.value[`sensor${i}`] = "0.0 kPa";
+        }
+        return;
+      }
+
+      // 按时间排序，获取最新的数据
+      filteredData.sort((a, b) => {
+        const timeA = new Date(a.parsed_time || 0).getTime();
+        const timeB = new Date(b.parsed_time || 0).getTime();
+        return timeB - timeA;
+      });
+
+      // 初始化传感器数据对象
+      const latestSensorData = {};
+      for (let i = 1; i <= 12; i++) {
+        latestSensorData[`sensor${i}`] = "0.0 kPa";
+      }
+
+      // 创建一个对象来存储每个传感器的最新数据
+      const sensorLatestData = {};
+
+      // 遍历所有数据，只保留每个传感器的最新数据
+      filteredData.forEach((item) => {
+        if (
+          typeof item.sensor_position === "number" &&
+          typeof item.pressure === "number" &&
+          !isNaN(item.pressure) &&
+          item.sensor_position >= 1 &&
+          item.sensor_position <= 12
+        ) {
+          const sensorKey = `sensor${item.sensor_position}`;
+          // 只有当这个传感器还没有数据时，才更新（因为数据已经按时间降序排序）
+          if (!sensorLatestData[sensorKey]) {
+            sensorLatestData[sensorKey] = item;
+          }
+        }
+      });
+
+      // 使用每个传感器的最新数据来更新传感器值
+      Object.keys(sensorLatestData).forEach((sensorKey) => {
+        const item = sensorLatestData[sensorKey];
+        const pressureInKPa = item.pressure;
+        latestSensorData[sensorKey] = `${pressureInKPa.toFixed(1)} kPa`;
+      });
+
+      // 更新sensorData
+      sensorData.value = latestSensorData;
+    } catch (error) {
+      console.error("加载最新传感器数据失败:", error);
+    }
+  };
 
   // 当前选中的管线/法兰编号
   const selectedPipeline = ref(1);
   const selectedFlange = ref(1);
 
-  // 历史数据/图表数据（均使用后端parsed_time）
+  // 历史数据/图表数据
   const historyData = ref([]);
   const chartData = ref([]);
 
@@ -30,12 +92,8 @@ export const useSensorStore = defineStore("sensor", () => {
   const rawMqttData = ref([]);
 
   // ========== 基础方法 ==========
-  // 获取指定传感器的数值
-  const getSensorValue = (sensorId) => {
-    return sensorData.value[sensorId] || "0.0 kPa";
-  };
 
-  // 提取所有唯一的管道ID列表（优化性能：使用Set去重）
+  // 提取所有唯一的管道ID列表
   const getUniquePipeIds = computed(() => {
     const pipeIds = new Set();
     rawMqttData.value.forEach((item) => item.pipe_id && pipeIds.add(item.pipe_id));
@@ -71,7 +129,7 @@ export const useSensorStore = defineStore("sensor", () => {
     }
   };
 
-  // 更新传感器数值（仅处理单对象，移除数组逻辑）
+  // 更新传感器数值
   const updateSensorData = (data) => {
     try {
       // 仅处理合法的单对象数据
@@ -96,8 +154,8 @@ export const useSensorStore = defineStore("sensor", () => {
         return;
       }
 
-      // 3. 计算压力值（转换为kPa，保留1位小数）
-      const pressureInKPa = data.pressure * 1000;
+      // 3. 计算压力值（保留1位小数）
+      const pressureInKPa = data.pressure;
       const sensorKey = `sensor${data.sensor_position}`;
 
       // 4. 更新传感器数值
@@ -249,7 +307,6 @@ export const useSensorStore = defineStore("sensor", () => {
     // 计算属性
     getUniquePipeIds,
     // 方法
-    getSensorValue,
     getFlangeIdsByPipeId,
     addRawMqttData,
     setPipelineByPipeId,
@@ -258,5 +315,6 @@ export const useSensorStore = defineStore("sensor", () => {
     setSelectedPipeline,
     setSelectedFlange,
     exportDataToCSV,
+    loadLatestSensorData,
   };
 });

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, watch, onUnmounted } from "vue";
 import { useSensorStore } from "@/stores/sensorStore";
 import * as echarts from "echarts";
 
@@ -10,6 +10,8 @@ const selectedPipeId = ref("");
 const selectedFlangeId = ref("");
 // 传感器选择
 const selectedSensor = ref("sensor1");
+// 定时刷新定时器
+let refreshTimer = null;
 
 // 计算属性：提取管道/法兰列表（从Pinia的rawMqttData）
 const pipeIdList = computed(() => sensorStore.getUniquePipeIds);
@@ -26,10 +28,57 @@ const initChart = () => {
   // 确保图表容器有高度（和样式层联动）
   lineChart = echarts.init(chartDom);
   const option = {
-    xAxis: { type: "category", data: [] },
-    yAxis: { type: "value", name: "压力 (kPa)" },
-    series: [{ data: [], type: "line", smooth: true }],
-    tooltip: { trigger: "axis" },
+    title: {
+      text: "压力趋势图",
+    },
+    tooltip: {
+      trigger: "axis",
+      formatter: function (params) {
+        params = params[0];
+        var date = new Date(params.name);
+        return (
+          date.getDate() +
+          "/" +
+          (date.getMonth() + 1) +
+          "/" +
+          date.getFullYear() +
+          " " +
+          date.getHours() +
+          ":" +
+          date.getMinutes() +
+          ":" +
+          date.getSeconds() +
+          " : " +
+          params.value[1] +
+          " kPa"
+        );
+      },
+      axisPointer: {
+        animation: false,
+      },
+    },
+    xAxis: {
+      type: "time",
+      splitLine: {
+        show: false,
+      },
+    },
+    yAxis: {
+      type: "value",
+      name: "压力 (kPa)",
+      boundaryGap: [0, "100%"],
+      splitLine: {
+        show: false,
+      },
+    },
+    series: [
+      {
+        name: "压力值",
+        type: "line",
+        showSymbol: false,
+        data: [],
+      },
+    ],
     grid: { left: "10%", right: "4%", bottom: "3%", containLabel: true },
   };
   lineChart.setOption(option);
@@ -38,18 +87,36 @@ const initChart = () => {
 // 更新图表数据
 const updateChart = () => {
   if (!selectedSensor.value || sensorStore.chartData.length === 0) {
-    lineChart?.setOption({ xAxis: { data: [] }, series: [{ data: [] }] });
+    lineChart?.setOption({ series: [{ data: [] }] });
     return;
   }
 
-  // 从chartData中提取选中传感器的数值
-  const xData = sensorStore.chartData.map((item) => item.timestamp);
-  const yData = sensorStore.chartData.map((item) => item[selectedSensor.value] || 0);
+  // 从chartData中提取选中传感器的数值，格式化为时间轴所需的数据格式
+  const chartData = sensorStore.chartData.map((item) => {
+    const time = new Date(item.parsed_time);
+    return [time, item[selectedSensor.value] || 0];
+  });
 
   lineChart?.setOption({
-    xAxis: { data: xData },
-    series: [{ data: yData }],
+    series: [{ data: chartData }],
   });
+};
+
+// 启动定时刷新
+const startRefreshTimer = () => {
+  // 清除之前的定时器
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+
+  // 只有当选择了管道和法兰时才启动定时刷新
+  if (selectedPipeId.value && selectedFlangeId.value) {
+    refreshTimer = setInterval(() => {
+      sensorStore.loadLatestSensorData(selectedPipeId.value, selectedFlangeId.value);
+      updateChart(); // 刷新图表
+    }, 1000); // 每秒钟刷新一次
+  }
 };
 
 // 监听选择器变化
@@ -60,6 +127,18 @@ watch([selectedPipeId, selectedFlangeId], () => {
   }
   if (selectedFlangeId.value) {
     sensorStore.setFlangeByFlangeId(selectedFlangeId.value);
+  }
+  // 加载最新传感器数据
+  if (selectedPipeId.value && selectedFlangeId.value) {
+    sensorStore.loadLatestSensorData(selectedPipeId.value, selectedFlangeId.value);
+    // 启动定时刷新
+    startRefreshTimer();
+  } else {
+    // 如果没有选择管道或法兰，清除定时器
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
+    }
   }
   updateChart(); // 刷新图表
 });
@@ -79,6 +158,10 @@ onMounted(() => {
     setTimeout(() => {
       if (flangeIdList.value.length > 0) {
         selectedFlangeId.value = flangeIdList.value[0];
+        // 加载初始传感器数据
+        sensorStore.loadLatestSensorData(selectedPipeId.value, selectedFlangeId.value);
+        // 启动定时刷新
+        startRefreshTimer();
       }
     }, 0);
   }
@@ -87,10 +170,17 @@ onMounted(() => {
   // 初始加载图表数据
   updateChart();
 });
+
+// 组件卸载时清除定时器
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+});
 </script>
 
 <template>
-  <!-- 继承全局container样式，统一页面宽度 -->
   <div class="container">
     <!-- 管道/法兰选择器 -->
     <section class="selector-panel">
@@ -125,73 +215,73 @@ onMounted(() => {
             <div class="sensor-item" style="--angle: 0deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器1</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor1") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor1 }}</div>
             </div>
             <!-- 传感器2 (30°) -->
             <div class="sensor-item" style="--angle: 30deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器2</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor2") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor2 }}</div>
             </div>
             <!-- 传感器3 (60°) -->
             <div class="sensor-item" style="--angle: 60deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器3</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor3") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor3 }}</div>
             </div>
             <!-- 传感器4 (90°) -->
             <div class="sensor-item" style="--angle: 90deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器4</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor4") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor4 }}</div>
             </div>
             <!-- 传感器5 (120°) -->
             <div class="sensor-item" style="--angle: 120deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器5</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor5") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor5 }}</div>
             </div>
             <!-- 传感器6 (150°) -->
             <div class="sensor-item" style="--angle: 150deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器6</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor6") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor6 }}</div>
             </div>
             <!-- 传感器7 (180°) -->
             <div class="sensor-item" style="--angle: 180deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器7</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor7") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor7 }}</div>
             </div>
             <!-- 传感器8 (210°) -->
             <div class="sensor-item" style="--angle: 210deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器8</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor8") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor8 }}</div>
             </div>
             <!-- 传感器9 (240°) -->
             <div class="sensor-item" style="--angle: 240deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器9</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor9") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor9 }}</div>
             </div>
             <!-- 传感器10 (270°) -->
             <div class="sensor-item" style="--angle: 270deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器10</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor10") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor10 }}</div>
             </div>
             <!-- 传感器11 (300°) -->
             <div class="sensor-item" style="--angle: 300deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器11</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor11") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor11 }}</div>
             </div>
             <!-- 传感器12 (330°) -->
             <div class="sensor-item" style="--angle: 330deg">
               <div class="sensor-dot"></div>
               <div class="sensor-label">传感器12</div>
-              <div class="sensor-value">{{ sensorStore.getSensorValue("sensor12") }}</div>
+              <div class="sensor-value">{{ sensorStore.sensorData.sensor12 }}</div>
             </div>
           </div>
         </div>
@@ -361,8 +451,8 @@ onMounted(() => {
   top: 50%;
   left: 50%;
   transform-origin: center;
-  transform: translate(-50%, -50%) rotate(var(--angle)) translateX(150px)
-    rotate(calc(-1 * var(--angle)));
+  transform: translate(-50%, -50%) rotate(-90deg) rotate(var(--angle)) translateX(150px)
+    rotate(calc(-1 * var(--angle))) rotate(90deg);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -506,8 +596,8 @@ onMounted(() => {
     height: 300px;
   }
   .sensor-item {
-    transform: translate(-50%, -50%) rotate(var(--angle)) translateX(120px)
-      rotate(calc(-1 * var(--angle)));
+    transform: translate(-50%, -50%) rotate(-90deg) rotate(var(--angle)) translateX(120px)
+      rotate(calc(-1 * var(--angle))) rotate(90deg);
   }
   .chart-container {
     height: 300px;

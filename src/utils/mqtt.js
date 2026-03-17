@@ -95,10 +95,10 @@ export const connectMqtt = () => {
           return; // 跳过无效数据，避免污染存储/Pinia
         }
 
-        // 3. 校验通过：更新最新数据
+        // 校验通过：更新最新数据
         receivedSensorData.value = data;
 
-        // 4. 构建历史数据项（仅保留后端parsed_time，无前端时间戳）
+        // 构建历史数据项
         const historyItem = {
           ...data,
           // 兜底：确保parsed_time存在，格式统一为本地字符串
