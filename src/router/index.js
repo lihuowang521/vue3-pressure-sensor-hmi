@@ -14,7 +14,7 @@ const router = createRouter({
     { path: "/setting", component: Setting },
     { path: "/history", component: History },
     { path: "/export-data", component: ExportData },
-    // 通配符路由
+    // 通配符路由，确保所有未匹配的路由都重定向到首页
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });

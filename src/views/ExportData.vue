@@ -1,14 +1,14 @@
 <script setup>
-// import { ref } from "vue";
-// // import { useSensorStore } from "@/stores/sensorStore";
+import { ref } from "vue";
+import { useSensorStore } from "@/stores/sensorStore";
 
-// // const sensorStore = useSensorStore();
-// const lastExportTime = ref("未导出过");
+const sensorStore = useSensorStore();
+const lastExportTime = ref("未导出过");
 
-// const exportData = () => {
-//   sensorStore.exportDataToCSV();
-//   lastExportTime.value = new Date().toLocaleString();
-// };
+const exportData = () => {
+  sensorStore.exportDataToCSV();
+  lastExportTime.value = new Date().toLocaleString();
+};
 </script>
 
 <template>

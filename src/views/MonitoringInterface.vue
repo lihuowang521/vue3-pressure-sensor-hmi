@@ -60,13 +60,13 @@ const initChart = () => {
     xAxis: {
       type: "time",
       splitLine: {
-        show: false,
+        show: false, // 隐藏网格分割线
       },
     },
     yAxis: {
       type: "value",
       name: "压力 (kPa)",
-      boundaryGap: [0, "100%"],
+      boundaryGap: [0, "100%"], // Y 轴范围自适应（0 到 最大值的 100%）
       splitLine: {
         show: false,
       },
@@ -75,7 +75,7 @@ const initChart = () => {
       {
         name: "压力值",
         type: "line",
-        showSymbol: false,
+        showSymbol: false, // 隐藏数据点标记（只显示折线，更流畅）
         data: [],
       },
     ],

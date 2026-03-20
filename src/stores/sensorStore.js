@@ -111,6 +111,7 @@ export const useSensorStore = defineStore("sensor", () => {
 
   // ========== 数据存储与更新 ==========
   // 保存原始MQTT数据（去重+更新传感器数据）
+  //源头，开始嵌套
   const addRawMqttData = (data) => {
     // 跳过空数据
     if (!data || typeof data !== "object") return;
@@ -120,6 +121,7 @@ export const useSensorStore = defineStore("sensor", () => {
       (item) =>
         item.pipe_id === data.pipe_id &&
         item.flange_id === data.flange_id &&
+        item.sensor_position === data.sensor_position &&
         item.parsed_time === data.parsed_time,
     );
 
@@ -136,7 +138,7 @@ export const useSensorStore = defineStore("sensor", () => {
       if (!data || typeof data !== "object") return;
 
       // 1. 校验当前数据是否匹配选中的管线/法兰
-      const currentPipeId = `P${String(selectedPipeline.value).padStart(3, "0")}`;
+      const currentPipeId = `P${String(selectedPipeline.value).padStart(3, "0")}`; //padStart() ：字符串方法，用于在字符串前面填充指定字符，直到达到指定长度
       const currentFlangeId = `F${String(selectedFlange.value).padStart(2, "0")}`;
       if (data.pipe_id !== currentPipeId || data.flange_id !== currentFlangeId) {
         return; // 不匹配则跳过更新
@@ -175,10 +177,10 @@ export const useSensorStore = defineStore("sensor", () => {
     }
   };
 
-  // 保存历史数据（仅用后端parsed_time）
+  // 保存历史数据
   const saveToHistory = (data, parsedTime = new Date().toISOString()) => {
     const historyItem = {
-      parsed_time: parsedTime, // 仅保留后端采集时间
+      parsed_time: parsedTime,
       pipeline: selectedPipeline.value,
       flange: selectedFlange.value,
       data: { ...data },

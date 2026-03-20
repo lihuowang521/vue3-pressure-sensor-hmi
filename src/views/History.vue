@@ -59,9 +59,13 @@ const setQuickFilter = (duration, event) => {
   queryData();
 };
 
-const exportToExcel = () => {
-  // 模拟导出功能
-  alert("导出 Excel 功能已触发");
+const goToExport = () => {
+  try {
+    router.push("/export-data");
+  } catch (error) {
+    console.error("跳转到导出数据页面失败：", error);
+    alert("页面跳转失败，请检查路由配置！");
+  }
 };
 
 const changePage = (direction) => {
@@ -168,7 +172,7 @@ onUnmounted(() => {
       <div class="data-section">
         <div class="section-header">
           <h2 class="data-title">📋 历史数据表格</h2>
-          <button class="export-btn" @click="exportToExcel()">📁 导出Excel</button>
+          <button class="export-btn" @click="goToExport()">📁 前往导出</button>
         </div>
         <div class="loading" v-if="isLoading">🔄 正在加载数据...</div>
         <div class="no-data" v-else-if="!hasData">📭 暂无数据，请选择时间范围后查询</div>
