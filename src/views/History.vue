@@ -5,25 +5,30 @@ defineOptions({
 });
 import { ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
+import { useSensorStore } from "@/stores/sensorStore";
+
+const sensorStore = useSensorStore();
 
 const router = useRouter();
-const startTime = ref("");
-const endTime = ref("");
-const isLoading = ref(false);
-const hasData = ref(false);
-const currentPage = ref(1);
-const totalPages = ref(1);
+
 const currentTime = ref("");
 
-const queryData = () => {
-  // 模拟数据查询
-  isLoading.value = true;
-  setTimeout(() => {
-    isLoading.value = false;
-    hasData.value = true;
-    // 这里可以添加实际的数据查询逻辑
-  }, 1000);
-};
+
+
+
+// 选择器绑定值
+const selectedPipeId = ref("");
+const selectedFlangeId = ref("");
+const startTime = ref("");
+const endTime = ref("");
+
+// 计算属性：提取管道/法兰列表
+const pipeIdList = computed(() => sensorStore.getUniquePipeIds);
+const flangeIdList = computed(() => {
+  if (!selectedPipeId.value) return [];
+  return sensorStore.getFlangeIdsByPipeId(selectedPipeId.value);
+});
+
 
 const setQuickFilter = (duration, event) => {
   const now = new Date();
@@ -56,26 +61,9 @@ const setQuickFilter = (duration, event) => {
   });
   event.target.classList.add("active");
 
-  queryData();
+  sensorStore.queryData();
 };
 
-const goToExport = () => {
-  try {
-    router.push("/export-data");
-  } catch (error) {
-    console.error("跳转到导出数据页面失败：", error);
-    alert("页面跳转失败，请检查路由配置！");
-  }
-};
-
-const changePage = (direction) => {
-  if (direction === "prev" && currentPage.value > 1) {
-    currentPage.value--;
-  } else if (direction === "next" && currentPage.value < totalPages.value) {
-    currentPage.value++;
-  }
-  // 这里可以添加实际的分页查询逻辑
-};
 
 const goBack = () => {
   router.push("/monitoring-interface");
@@ -169,33 +157,6 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="data-section">
-        <div class="section-header">
-          <h2 class="data-title">📋 历史数据表格</h2>
-          <button class="export-btn" @click="goToExport()">📁 前往导出</button>
-        </div>
-        <div class="loading" v-if="isLoading">🔄 正在加载数据...</div>
-        <div class="no-data" v-else-if="!hasData">📭 暂无数据，请选择时间范围后查询</div>
-        <div class="data-table-container" v-else>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>时间</th>
-                <th>压力值 (kPa)</th>
-                <th>状态</th>
-                <th>采样频率</th>
-                <th>设备状态</th>
-              </tr>
-            </thead>
-            <tbody id="dataTableBody"></tbody>
-          </table>
-        </div>
-        <div class="pagination" v-if="hasData">
-          <button @click="changePage('prev')" :disabled="currentPage === 1">上一页</button>
-          <span>第 {{ currentPage }} 页，共 {{ totalPages }} 页</span>
-          <button @click="changePage('next')" :disabled="currentPage === totalPages">下一页</button>
-        </div>
-      </div>
     </section>
   </div>
 </template>

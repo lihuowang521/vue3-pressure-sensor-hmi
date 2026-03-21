@@ -2,7 +2,6 @@
 import { ref, onMounted, onUnmounted, defineOptions } from "vue";
 import { useRouter } from "vue-router";
 
-// 兼容Vue 3.3-版本：若defineOptions报错，可替换为/* eslint-disable */
 defineOptions({
   name: "SettingPage",
 });

@@ -25,33 +25,14 @@ let lineChart = null;
 const initChart = () => {
   const chartDom = document.querySelector("#line-chart");
   if (!chartDom) return;
-  // 确保图表容器有高度（和样式层联动）
   lineChart = echarts.init(chartDom);
   const option = {
-    title: {
-      text: "压力趋势图",
-    },
     tooltip: {
       trigger: "axis",
       formatter: function (params) {
-        params = params[0];
-        var date = new Date(params.name);
-        return (
-          date.getDate() +
-          "/" +
-          (date.getMonth() + 1) +
-          "/" +
-          date.getFullYear() +
-          " " +
-          date.getHours() +
-          ":" +
-          date.getMinutes() +
-          ":" +
-          date.getSeconds() +
-          " : " +
-          params.value[1] +
-          " kPa"
-        );
+        const time = new Date(params[0].data[0]);
+        const timeStr = time.toLocaleString(); // 显示年月日时分秒
+        return `${timeStr}：${params[0].data[1].toFixed(1)} kPa`;
       },
       axisPointer: {
         animation: false,
@@ -59,88 +40,110 @@ const initChart = () => {
     },
     xAxis: {
       type: "time",
-      splitLine: {
-        show: false, // 隐藏网格分割线
+      splitLine: { show: false },
+      // 修改核心：配置X轴只显示时分秒
+      axisLabel: {
+        formatter: function (value) {
+          // value是时间戳，转为时分秒
+          return new Date(value).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          });
+        },
+        fontSize: 12,
       },
+      min: "dataMin",
+      max: "dataMax",
     },
     yAxis: {
       type: "value",
       name: "压力 (kPa)",
-      boundaryGap: [0, "100%"], // Y 轴范围自适应（0 到 最大值的 100%）
-      splitLine: {
-        show: false,
+      boundaryGap: [0, "10%"], // 缩小边距，更紧凑
+      splitLine: { show: false },
+      axisLabel: {
+        formatter: "{value} kPa",
       },
     },
     series: [
       {
         name: "压力值",
         type: "line",
-        showSymbol: false, // 隐藏数据点标记（只显示折线，更流畅）
+        showSymbol: true,
+        symbolSize: 4,
+        smooth: true, // 折线平滑
         data: [],
       },
     ],
-    grid: { left: "10%", right: "4%", bottom: "3%", containLabel: true },
+    grid: { left: "8%", right: "4%", bottom: "15%", top: "10%", containLabel: true },
   };
   lineChart.setOption(option);
 };
 
-// 更新图表数据
 const updateChart = () => {
-  if (!selectedSensor.value || sensorStore.chartData.length === 0) {
+  if (!lineChart || !selectedSensor.value || sensorStore.chartData.length === 0) {
     lineChart?.setOption({ series: [{ data: [] }] });
     return;
   }
 
-  // 从chartData中提取选中传感器的数值，格式化为时间轴所需的数据格式
-  const chartData = sensorStore.chartData.map((item) => {
-    const time = new Date(item.parsed_time);
-    return [time, item[selectedSensor.value] || 0];
-  });
+  const currentPipeId = selectedPipeId.value;
+  const currentFlangeId = selectedFlangeId.value;
 
-  lineChart?.setOption({
-    series: [{ data: chartData }],
+  const validChartData = sensorStore.chartData
+    .filter((item) => item.parsed_time)
+    .filter((item) => {
+      if (!currentPipeId || !currentFlangeId) return true;
+      return item.pipeline === currentPipeId && item.flange === currentFlangeId;
+    })
+    .map((item) => {
+      const timeStamp = new Date(item.parsed_time).getTime();
+      const value = item[selectedSensor.value] || 0;
+      return [timeStamp, value];
+    })
+    .filter((item) => !isNaN(item[0]));
+
+  let yAxisMin = 0;
+  let yAxisMax = 10;
+  if (validChartData.length > 0) {
+    const values = validChartData.map((item) => item[1]);
+    const minVal = Math.min(...values);
+    const maxVal = Math.max(...values);
+    const padding = (maxVal - minVal) * 0.1 || 2;
+    yAxisMin = Math.max(0, minVal - padding);
+    yAxisMax = maxVal + padding;
+  }
+
+  lineChart.setOption({
+    series: [{ data: validChartData }],
+    yAxis: { min: yAxisMin, max: yAxisMax },
   });
 };
 
 // 启动定时刷新
 const startRefreshTimer = () => {
-  // 清除之前的定时器
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
+  if (refreshTimer) clearInterval(refreshTimer);
 
-  // 只有当选择了管道和法兰时才启动定时刷新
   if (selectedPipeId.value && selectedFlangeId.value) {
     refreshTimer = setInterval(() => {
       sensorStore.loadLatestSensorData(selectedPipeId.value, selectedFlangeId.value);
-      updateChart(); // 刷新图表
-    }, 1000); // 每秒钟刷新一次
+      updateChart();
+    }, 1000);
   }
 };
 
 // 监听选择器变化
 watch([selectedPipeId, selectedFlangeId], () => {
-  // 选择管道/法兰后，更新Pinia的selectedPipeline/selectedFlange
-  if (selectedPipeId.value) {
-    sensorStore.setPipelineByPipeId(selectedPipeId.value);
-  }
-  if (selectedFlangeId.value) {
-    sensorStore.setFlangeByFlangeId(selectedFlangeId.value);
-  }
-  // 加载最新传感器数据
+  if (selectedPipeId.value) sensorStore.setPipelineByPipeId(selectedPipeId.value);
+  if (selectedFlangeId.value) sensorStore.setFlangeByFlangeId(selectedFlangeId.value);
+
   if (selectedPipeId.value && selectedFlangeId.value) {
     sensorStore.loadLatestSensorData(selectedPipeId.value, selectedFlangeId.value);
-    // 启动定时刷新
     startRefreshTimer();
   } else {
-    // 如果没有选择管道或法兰，清除定时器
-    if (refreshTimer) {
-      clearInterval(refreshTimer);
-      refreshTimer = null;
-    }
+    if (refreshTimer) clearInterval(refreshTimer);
   }
-  updateChart(); // 刷新图表
+  // 延迟更新图表，确保数据加载完成
+  setTimeout(updateChart, 100);
 });
 
 // 传感器选择变化
@@ -148,35 +151,40 @@ const handleSensorChange = () => {
   updateChart();
 };
 
+// 监听chartData变化，自动更新图表
+watch(
+  () => sensorStore.chartData,
+  () => {
+    if (selectedPipeId.value && selectedFlangeId.value) {
+      updateChart();
+    }
+  },
+  { deep: true },
+);
+
 // 页面初始化
 onMounted(() => {
   initChart();
   // 默认选中第一个管道/法兰
   if (pipeIdList.value.length > 0) {
     selectedPipeId.value = pipeIdList.value[0];
-    // 选管道后自动选第一个法兰
     setTimeout(() => {
       if (flangeIdList.value.length > 0) {
         selectedFlangeId.value = flangeIdList.value[0];
-        // 加载初始传感器数据
         sensorStore.loadLatestSensorData(selectedPipeId.value, selectedFlangeId.value);
-        // 启动定时刷新
         startRefreshTimer();
+        // 初始化图表数据
+        setTimeout(updateChart, 200);
       }
-    }, 0);
+    }, 100);
   }
-  // 监听图表自适应
   window.addEventListener("resize", () => lineChart?.resize());
-  // 初始加载图表数据
-  updateChart();
 });
 
 // 组件卸载时清除定时器
 onUnmounted(() => {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
+  if (refreshTimer) clearInterval(refreshTimer);
+  if (lineChart) lineChart.dispose(); // 释放图表资源
 });
 </script>
 
