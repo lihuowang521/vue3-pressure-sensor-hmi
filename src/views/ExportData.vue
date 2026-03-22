@@ -59,6 +59,58 @@ const exportData = () => {
     lastExportTime.value = new Date().toLocaleString();
   }
 };
+
+// 删除数据
+const deleteData = () => {
+  const confirmDelete = confirm(
+    `确定要删除符合条件的数据吗？\n\n` +
+      `管道：${selectedPipeId.value || "全部"}\n` +
+      `法兰：${selectedFlangeId.value || "全部"}\n` +
+      `开始时间：${startTime.value || "不限"}\n` +
+      `结束时间：${endTime.value || "不限"}`,
+  );
+
+  if (!confirmDelete) return;
+
+  const options = {
+    pipeId: selectedPipeId.value || undefined,
+    flangeId: selectedFlangeId.value || undefined,
+    startTime: startTime.value ? new Date(startTime.value).getTime() : undefined,
+    endTime: endTime.value ? new Date(endTime.value).getTime() : undefined,
+  };
+
+  const deletedCount = sensorStore.deleteRawMqttData(options);
+  if (deletedCount > 0) {
+    alert(`成功删除 ${deletedCount} 条数据`);
+  } else {
+    alert("没有找到符合条件的数据");
+  }
+};
+
+// 清理旧数据（保留最新的N条）
+const cleanupOldData = () => {
+  const keepCount = prompt("请输入要保留的最新数据条数：", "1000");
+  if (keepCount === null) return;
+
+  const count = parseInt(keepCount, 10);
+  if (isNaN(count) || count <= 0) {
+    alert("请输入有效的数字");
+    return;
+  }
+
+  const confirmCleanup = confirm(
+    `确定要只保留最新的 ${count} 条数据吗？\n\n` +
+      `当前总数据量：${sensorStore.rawMqttData.length} 条\n` +
+      `将删除：${Math.max(0, sensorStore.rawMqttData.length - count)} 条数据`,
+  );
+
+  if (!confirmCleanup) return;
+
+  const result = sensorStore.deleteRawMqttData({ keepLatest: count });
+  if (result) {
+    alert(`已保留最新的 ${count} 条数据`);
+  }
+};
 </script>
 
 <template>
@@ -117,7 +169,11 @@ const exportData = () => {
           <button class="quick-time-btn" @click="setQuickTimeRange('30d')">最近30天</button>
         </div>
 
-        <button class="export-btn" @click="exportData">导出数据</button>
+        <div class="button-group">
+          <button class="export-btn" @click="exportData">📥 导出数据</button>
+          <button class="delete-btn" @click="deleteData">🗑️ 删除数据</button>
+          <button class="cleanup-btn" @click="cleanupOldData">🧹 清理旧数据</button>
+        </div>
       </div>
 
       <div class="export-info">
@@ -221,6 +277,13 @@ const exportData = () => {
   transform: translateY(-1px);
 }
 
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
 .export-btn {
   width: 100%;
   padding: 15px;
@@ -232,12 +295,47 @@ const exportData = () => {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
-  margin-top: 20px;
 }
 
 .export-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.delete-btn {
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(45deg, #ff6b6b, #ee5a5a);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.delete-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+}
+
+.cleanup-btn {
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(45deg, #4ecdc4, #44a08d);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.cleanup-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(78, 205, 196, 0.4);
 }
 
 .export-info {
