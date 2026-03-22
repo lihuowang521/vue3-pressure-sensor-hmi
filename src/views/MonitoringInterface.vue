@@ -335,11 +335,11 @@ onUnmounted(() => {
           </div>
           <div class="param-item">
             <div class="param-label">报警上限</div>
-            <div class="param-value">200 kPa</div>
+            <div class="param-value">400 kPa</div>
           </div>
           <div class="param-item">
             <div class="param-label">报警下限</div>
-            <div class="param-value">50 kPa</div>
+            <div class="param-value">0 kPa</div>
           </div>
           <div class="param-item">
             <div class="param-label">通信波特率</div>
@@ -348,7 +348,7 @@ onUnmounted(() => {
         </div>
         <div class="alert-area" id="alertArea">
           <strong>⚠️ 压力报警</strong><br />
-          当前压力超出设定阈值范围
+          当前压力未超出设定阈值范围
         </div>
       </div>
     </section>
