@@ -128,8 +128,8 @@ export const useSensorStore = defineStore(
         const chartItem = chartMap.get(key);
 
         // 动态添加传感器数据，如 sensor1, sensor2, ...
-          const sensorKey = `sensor${item.sensor_position}`;
-          chartItem[sensorKey] = item.pressure; // 存储压力值
+        const sensorKey = `sensor${item.sensor_position}`;
+        chartItem[sensorKey] = item.pressure; // 存储压力值
       });
 
       // 将Map转换为数组
@@ -227,6 +227,57 @@ export const useSensorStore = defineStore(
     };
     const setSelectedFlange = (flange) => {
       selectedFlange.value = flange || "";
+    };
+
+    // ========== 数据删除 ==========
+    // 删除原始MQTT数据（支持多种删除条件）
+    const deleteRawMqttData = (options = {}) => {
+      const { pipeId, flangeId, startTime, endTime, keepLatest } = options;
+
+      // 如果指定了 keepLatest，只保留最新的N条数据
+      if (keepLatest && typeof keepLatest === "number" && keepLatest > 0) {
+        const totalToKeep = Math.min(keepLatest, rawMqttData.value.length);
+        rawMqttData.value = rawMqttData.value.slice(-totalToKeep);
+        // 清空历史数据缓存
+        historyData.value = [];
+        // 重新加载当前选中管道法兰的传感器数据
+        if (selectedPipeline.value && selectedFlange.value) {
+          loadLatestSensorData(selectedPipeline.value, selectedFlange.value);
+        }
+        return true;
+      }
+
+      // 按条件删除数据
+      const originalLength = rawMqttData.value.length;
+      rawMqttData.value = rawMqttData.value.filter((item) => {
+        // 按管道ID过滤
+        if (pipeId && item.pipe_id !== pipeId) return true;
+        // 按法兰ID过滤
+        if (flangeId && item.flange_id !== flangeId) return true;
+        // 按开始时间过滤
+        if (startTime) {
+          const itemTime = new Date(item.parsed_time).getTime();
+          if (itemTime < startTime) return true;
+        }
+        // 按结束时间过滤
+        if (endTime) {
+          const itemTime = new Date(item.parsed_time).getTime();
+          if (itemTime > endTime) return true;
+        }
+        // 不满足保留条件的，删除（返回false）
+        return false;
+      });
+
+      // 清空历史数据缓存
+      historyData.value = [];
+      // 重新加载当前选中管道法兰的传感器数据
+      if (selectedPipeline.value && selectedFlange.value) {
+        loadLatestSensorData(selectedPipeline.value, selectedFlange.value);
+      }
+
+      const deletedCount = originalLength - rawMqttData.value.length;
+      console.log(`已删除 ${deletedCount} 条数据`);
+      return deletedCount;
     };
 
     // ========== 数据导出 ==========
@@ -353,6 +404,7 @@ export const useSensorStore = defineStore(
       exportDataToCSV,
       loadLatestSensorData,
       getHistoryData,
+      deleteRawMqttData,
     };
   },
   {

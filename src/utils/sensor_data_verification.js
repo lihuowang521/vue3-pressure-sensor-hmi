@@ -55,16 +55,16 @@ function validateSingleSensorItem(item) {
     });
   }
 
-  // 规则2：pressure 必须是有效数字（0-300kPa）
+  // 规则2：pressure 必须是有效数字（0-400kPa）
   if (typeof item.pressure !== "number" || isNaN(item.pressure)) {
     errors.push({
       field: "pressure",
       message: `${locationInfo} 压力值（pressure）必须为有效数字（非NaN）`,
     });
-  } else if (item.pressure < 0 || item.pressure > 300) {
+  } else if (item.pressure < 0 || item.pressure > 400) {
     errors.push({
       field: "pressure",
-      message: `${locationInfo} 压力值必须在0-300kPa之间（当前值：${item.pressure} 危险！！！！！）`,
+      message: `${locationInfo} 压力值必须在0-400kPa之间（当前值：${item.pressure} 危险！！！！！）`,
     });
   }
 

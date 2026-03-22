@@ -6,6 +6,7 @@ defineOptions({
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useSensorStore } from "@/stores/sensorStore";
+import * as echarts from "echarts";
 
 const sensorStore = useSensorStore();
 
@@ -87,6 +88,41 @@ const queryData = () => {
     startTime.value,
     endTime.value,
   );
+  initChart(queryResult.value);
+};
+
+//初始化图表
+let lineChart = null;
+const initChart = (data) => {
+  const chartDom = document.querySelector("#line-chart");
+  if (!chartDom) return;
+  lineChart = echarts.init(chartDom);
+  const option = {
+    tooltip: {
+      trigger: "axis",
+      axisPointer: {
+        animation: false,
+      },
+    },
+    xAxis: {
+      type: "category",
+      data: data.map((item) => item.parsed_time),
+    },
+    yAxis: {
+      type: "value",
+    },
+    series: [
+      {
+        data: data.map((item) => item.pressure),
+        type: "line",
+        name: "压力",
+        axisLabel: {
+          formatter: (value) => `${value} kPa`,
+        },
+      },
+    ],
+  };
+  lineChart.setOption(option);
 };
 
 let timer = null;
@@ -191,7 +227,7 @@ onUnmounted(() => {
       <div class="chart-section">
         <h2 class="chart-title">📈 历史趋势图</h2>
         <!-- 图表容器，通过ID供JavaScript访问以渲染图表 -->
-        <div class="chart-container" id="chartContainer">
+        <div class="chart-container" id="line-chart">
           <!-- 图表占位符，在无数据时显示提示信息 -->
           <div v-if="queryResult.length === 0" class="chart-placeholder">
             📊 压力趋势折线图<br />
