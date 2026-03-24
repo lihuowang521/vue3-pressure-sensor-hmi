@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build  --base=/vue3-pressure-sensor-hmi",
+    "build": "vite build",
     "preview": "vite preview",
     "lint": "run-s lint:*",
     "lint:oxlint": "oxlint . --fix",

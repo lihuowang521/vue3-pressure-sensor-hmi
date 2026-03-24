@@ -53,16 +53,25 @@ export const connectMqtt = () => {
   }
 
   try {
+    // 创建连接选项对象
+    const connectOptions = {
+      clientId: clientId,
+      clean: true,
+      reconnectPeriod: 1000,
+      connectTimeout: 30 * 1000,
+    };
+
+    // 只有当用户名和密码有值时才添加到连接选项
+    if (defaultMqttConfig.value.username) {
+      connectOptions.username = defaultMqttConfig.value.username;
+    }
+    if (defaultMqttConfig.value.password) {
+      connectOptions.password = defaultMqttConfig.value.password;
+    }
+
     client = mqtt.connect(
       `wss://${defaultMqttConfig.value.broker}:${defaultMqttConfig.value.port}/mqtt`,
-      {
-        clientId: clientId,
-        username: defaultMqttConfig.value.username,
-        password: defaultMqttConfig.value.password,
-        clean: true,
-        reconnectPeriod: 1000,
-        connectTimeout: 30 * 1000,
-      },
+      connectOptions,
     );
 
     // 连接成功
