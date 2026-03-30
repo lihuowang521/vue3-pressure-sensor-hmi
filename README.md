@@ -17,6 +17,9 @@
 - 管道/法兰选择器
 - 系统参数显示
 
+<img width="2549" height="1403" alt="image" src="https://github.com/user-attachments/assets/55d4ebb4-3985-44dc-985b-2a150bf77c64" />
+
+
 ### 📈 数据可视化
 
 - 压力趋势图表（最近1小时数据）
@@ -26,11 +29,16 @@
 
 ### 📋 历史数据
 
+<img width="2549" height="1403" alt="image" src="https://github.com/user-attachments/assets/b67fa6d3-16d3-4712-a2e1-d74a6c28a4b1" />
+
 - 按时间范围查询历史数据
 - 支持管道/法兰/传感器筛选
 - 数据表格展示
 
 ### 💾 数据导出
+
+<img width="2549" height="1403" alt="image" src="https://github.com/user-attachments/assets/3c24eb30-c175-41fc-a4c0-ce74a58593cb" />
+
 
 - CSV格式导出数据
 - 支持按条件导出
@@ -42,6 +50,8 @@
 - 主题订阅管理
 - 连接状态监控
 - 手动发布测试消息
+<img width="2549" height="1403" alt="image" src="https://github.com/user-attachments/assets/88d52620-23cb-46c8-800c-6c9f55ba5530" />
+
 
 ### 🔒 数据校验
 
