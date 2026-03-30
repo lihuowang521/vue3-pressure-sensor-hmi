@@ -4,6 +4,8 @@
  * @returns {Object} 校验结果：{ valid: boolean, errors: Array<{ field: string, message: string }> }
  */
 export function validateSensorData(data) {
+  console.log(data);
+
   const result = { valid: true, errors: [] };
 
   // 第一步：判断数据类型（仅支持非空普通对象）
@@ -61,10 +63,29 @@ function validateSingleSensorItem(item) {
       field: "pressure",
       message: `${locationInfo} 压力值（pressure）必须为有效数字（非NaN）`,
     });
-  } else if (item.pressure < 0 || item.pressure > 400) {
+  } else if (item.pressure < 0 || item.pressure > 400000000000000000) {
     errors.push({
       field: "pressure",
-      message: `${locationInfo} 压力值必须在0-400kPa之间（当前值：${item.pressure} 危险！！！！！）`,
+      message: `${locationInfo} 压力值必须在0-4000000000000kPa之间（当前值：${item.pressure} 危险！！！！！）`,
+    });
+  }
+
+  // 规则3：position_angle 必须是有效数字
+  if (
+    item.position_angle !== undefined &&
+    (typeof item.position_angle !== "number" || isNaN(item.position_angle))
+  ) {
+    errors.push({
+      field: "position_angle",
+      message: `${locationInfo} 位置角度（position_angle）必须为有效数字（非NaN）`,
+    });
+  }
+
+  // 规则4：device_id 必须存在且为字符串
+  if (!item.device_id || typeof item.device_id !== "string") {
+    errors.push({
+      field: "device_id",
+      message: `${locationInfo} 设备ID（device_id）必须存在且为字符串`,
     });
   }
 
