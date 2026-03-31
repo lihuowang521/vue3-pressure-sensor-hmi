@@ -4,11 +4,11 @@ import { validateSensorData } from "@/utils/sensor_data_verification.js";
 
 // 默认MQTT配置
 export const defaultMqttConfig = ref({
-  broker: "192.168.1.200",
-  port: 1883,
-  topic: "gateway/uplink/data",
-  username: "",
-  password: "",
+  broker: "va1af2fe.ala.cn-hangzhou.emqxsl.cn",
+  port: 8084,
+  topic: "sensor/data",
+  username: "qqqqwwww",
+  password: "123456",
 });
 
 // 连接状态
