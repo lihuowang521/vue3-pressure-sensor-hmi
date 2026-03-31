@@ -1,8 +1,12 @@
 # vue3-sensor 项目:智能压力传感器人机交互界面设计（毕业设计）
 
+页面已部署到https://lihuowang521.github.io/vue3-pressure-sensor-page/
+
 ## 项目简介
 
 本项目是一个基于Vue 3开发的智能压力传感器人机交互界面，主要用于实时监控和管理管道法兰上的压力传感器数据。系统支持实时数据展示、历史数据查询、数据可视化和导出等功能，为工业环境中的压力监测提供直观、高效的解决方案。
+<img width="2549" height="1403" alt="image" src="https://github.com/user-attachments/assets/908be522-8614-4e22-85a7-22a9d825c96c" />
+
 
 ## 功能特性
 
@@ -13,6 +17,9 @@
 - 管道/法兰选择器
 - 系统参数显示
 
+<img width="2549" height="1403" alt="image" src="https://github.com/user-attachments/assets/55d4ebb4-3985-44dc-985b-2a150bf77c64" />
+
+
 ### 📈 数据可视化
 
 - 压力趋势图表（最近1小时数据）
@@ -22,11 +29,16 @@
 
 ### 📋 历史数据
 
+<img width="2549" height="1403" alt="image" src="https://github.com/user-attachments/assets/b67fa6d3-16d3-4712-a2e1-d74a6c28a4b1" />
+
 - 按时间范围查询历史数据
 - 支持管道/法兰/传感器筛选
 - 数据表格展示
 
 ### 💾 数据导出
+
+<img width="2549" height="1403" alt="image" src="https://github.com/user-attachments/assets/3c24eb30-c175-41fc-a4c0-ce74a58593cb" />
+
 
 - CSV格式导出数据
 - 支持按条件导出
@@ -38,6 +50,8 @@
 - 主题订阅管理
 - 连接状态监控
 - 手动发布测试消息
+<img width="2549" height="1403" alt="image" src="https://github.com/user-attachments/assets/88d52620-23cb-46c8-800c-6c9f55ba5530" />
+
 
 ### 🔒 数据校验
 
@@ -196,7 +210,7 @@ pnpm run lint
 本项目为毕业设计作品，仅供学习和参考使用。
 
 ## 联系方式
-
+2134562675@qq.com
 如有问题或建议，请联系项目作者。
 
 ---
