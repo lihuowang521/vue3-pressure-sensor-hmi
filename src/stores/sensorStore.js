@@ -93,16 +93,82 @@ export const useSensorStore = defineStore(
     // 历史数据（从rawMqttData中计算得出）
     const historyData = ref([]);
     const getHistoryData = function (pipeId, flangeId, sensorPosition, startTime, endTime) {
+      console.log("获取历史数据参数:", {
+        pipeId,
+        flangeId,
+        sensorPosition,
+        startTime,
+        endTime,
+      });
+
+      // 转换时间为Date对象进行比较
+      const startDate = new Date(startTime);
+      const endDate = new Date(endTime);
+
+      // 调整结束时间为当天的23:59:59，确保包含当天所有数据
+      endDate.setHours(23, 59, 59, 999);
+
+      console.log("转换后的时间:", {
+        startDate,
+        endDate,
+      });
+
+      // 先检查原始数据
+      console.log("原始数据数量:", rawMqttData.value.length);
+      console.log("前5条原始数据:", rawMqttData.value.slice(0, 5));
+
       historyData.value = rawMqttData.value.filter((item) => {
+        // 检查必要字段是否存在
+        if (
+          !item.pipe_id ||
+          !item.flange_id ||
+          typeof item.sensor_position !== "number" ||
+          !item.parsed_time
+        ) {
+          console.log("跳过缺少字段的数据:", item);
+          return false;
+        }
+
+        // 转换item的时间为Date对象
+        const itemDate = new Date(item.parsed_time);
+
+        // 检查时间是否有效
+        if (isNaN(itemDate.getTime())) {
+          console.log("跳过无效时间数据:", item.parsed_time);
+          return false;
+        }
+
+        // 调试信息
+        if (
+          item.pipe_id === pipeId &&
+          item.flange_id === flangeId &&
+          item.sensor_position === sensorPosition
+        ) {
+          const inRange = itemDate >= startDate && itemDate <= endDate;
+          console.log("数据项:", {
+            parsed_time: item.parsed_time,
+            itemDate: itemDate,
+            startDate: startDate,
+            endDate: endDate,
+            inRange: inRange,
+          });
+        }
+
         return (
           item.pipe_id === pipeId &&
           item.flange_id === flangeId &&
           item.sensor_position === sensorPosition &&
-          item.parsed_time >= startTime &&
-          item.parsed_time <= endTime
+          !isNaN(itemDate.getTime()) &&
+          itemDate >= startDate &&
+          itemDate <= endDate
         );
       });
+
+      console.log("过滤后的数据长度:", historyData.value.length);
+
       historyData.value.sort((a, b) => new Date(a.parsed_time) - new Date(b.parsed_time)); //历史数据按时间排序
+      console.log("排序后的数据:", historyData.value);
+
       return historyData.value;
     };
 

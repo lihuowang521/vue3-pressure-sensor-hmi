@@ -22,7 +22,10 @@ const flangeIdList = computed(() => {
 
 // 初始化图表
 let lineChart = null;
+let isMounted = false;
+
 const initChart = () => {
+  if (!isMounted) return;
   const chartDom = document.querySelector("#line-chart");
   if (!chartDom) return;
   lineChart = echarts.init(chartDom);
@@ -61,6 +64,7 @@ const initChart = () => {
       name: "压力 (kPa)",
       boundaryGap: [0, "10%"], // 缩小边距，更紧凑
       splitLine: { show: false },
+      minInterval: 1, // 强制显示最小刻度间隔为1
       axisLabel: {
         formatter: "{value} kPa",
       },
@@ -81,13 +85,17 @@ const initChart = () => {
 };
 
 const updateChart = () => {
-  if (!lineChart || !selectedSensor.value || sensorStore.chartData.length === 0) {
-    lineChart?.setOption({ series: [{ data: [] }] });
+  if (!isMounted || !lineChart || !selectedSensor.value) {
     return;
   }
 
   const currentPipeId = selectedPipeId.value;
   const currentFlangeId = selectedFlangeId.value;
+
+  // 计算5分钟前的时间戳
+  const fiveMinutesAgo = new Date();
+  fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
+  const fiveMinutesAgoTimestamp = fiveMinutesAgo.getTime();
 
   const validChartData = sensorStore.chartData
     .filter((item) => item.parsed_time)
@@ -100,7 +108,9 @@ const updateChart = () => {
       const value = item[selectedSensor.value] || 0;
       return [timeStamp, value];
     })
-    .filter((item) => !isNaN(item[0]));
+    .filter((item) => !isNaN(item[0]))
+    // 只保留最近5分钟的数据
+    .filter((item) => item[0] >= fiveMinutesAgoTimestamp);
 
   let yAxisMin = 0;
   let yAxisMax = 10;
@@ -113,26 +123,45 @@ const updateChart = () => {
     yAxisMax = maxVal + padding;
   }
 
-  lineChart.setOption({
-    series: [{ data: validChartData }],
-    yAxis: { min: yAxisMin, max: yAxisMax },
-  });
+  try {
+    lineChart.setOption({
+      series: [{ data: validChartData }],
+      yAxis: { min: yAxisMin, max: yAxisMax },
+    });
+  } catch (error) {
+    console.warn("图表更新失败：", error);
+  }
 };
 
 // 启动定时刷新
 const startRefreshTimer = () => {
   if (refreshTimer) clearInterval(refreshTimer);
 
-  if (selectedPipeId.value && selectedFlangeId.value) {
+  if (isMounted && selectedPipeId.value && selectedFlangeId.value) {
     refreshTimer = setInterval(() => {
-      sensorStore.loadLatestSensorData(selectedPipeId.value, selectedFlangeId.value);
-      updateChart();
+      if (isMounted) {
+        sensorStore.loadLatestSensorData(selectedPipeId.value, selectedFlangeId.value);
+        updateChart();
+      }
     }, 1000);
+  }
+};
+
+// 处理窗口 resize 事件
+const handleResize = () => {
+  if (isMounted && lineChart) {
+    try {
+      lineChart.resize();
+    } catch (error) {
+      console.warn("图表 resize 失败：", error);
+    }
   }
 };
 
 // 监听选择器变化
 watch([selectedPipeId, selectedFlangeId], () => {
+  if (!isMounted) return;
+
   if (selectedPipeId.value) sensorStore.setPipelineByPipeId(selectedPipeId.value);
   if (selectedFlangeId.value) sensorStore.setFlangeByFlangeId(selectedFlangeId.value);
 
@@ -143,19 +172,21 @@ watch([selectedPipeId, selectedFlangeId], () => {
     if (refreshTimer) clearInterval(refreshTimer);
   }
   // 延迟更新图表，确保数据加载完成
-  setTimeout(updateChart, 100);
+  setTimeout(() => {
+    if (isMounted) updateChart();
+  }, 100);
 });
 
 // 传感器选择变化
 const handleSensorChange = () => {
-  updateChart();
+  if (isMounted) updateChart();
 };
 
 // 监听chartData变化，自动更新图表
 watch(
   () => sensorStore.chartData,
   () => {
-    if (selectedPipeId.value && selectedFlangeId.value) {
+    if (isMounted && selectedPipeId.value && selectedFlangeId.value) {
       updateChart();
     }
   },
@@ -164,27 +195,42 @@ watch(
 
 // 页面初始化
 onMounted(() => {
+  isMounted = true;
   initChart();
   // 默认选中第一个管道/法兰
   if (pipeIdList.value.length > 0) {
     selectedPipeId.value = pipeIdList.value[0];
     setTimeout(() => {
-      if (flangeIdList.value.length > 0) {
+      if (isMounted && flangeIdList.value.length > 0) {
         selectedFlangeId.value = flangeIdList.value[0];
         sensorStore.loadLatestSensorData(selectedPipeId.value, selectedFlangeId.value);
         startRefreshTimer();
         // 初始化图表数据
-        setTimeout(updateChart, 200);
+        setTimeout(() => {
+          if (isMounted) updateChart();
+        }, 200);
       }
     }, 100);
   }
-  window.addEventListener("resize", () => lineChart?.resize());
+  window.addEventListener("resize", handleResize);
 });
 
 // 组件卸载时清除定时器
 onUnmounted(() => {
-  if (refreshTimer) clearInterval(refreshTimer);
-  if (lineChart) lineChart.dispose(); // 释放图表资源
+  isMounted = false;
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  window.removeEventListener("resize", handleResize);
+  if (lineChart) {
+    try {
+      lineChart.dispose(); // 释放图表资源
+    } catch (error) {
+      console.warn("图表销毁失败：", error);
+    }
+    lineChart = null;
+  }
 });
 </script>
 
@@ -297,7 +343,7 @@ onUnmounted(() => {
 
       <section class="chart-panel">
         <h2 class="panel-title">压力趋势图</h2>
-        <div class="time-range">最近1小时数据</div>
+        <div class="time-range">最近5分钟数据</div>
         <div class="sensor-selector">
           <label for="sensor-select">选择传感器：</label>
           <select

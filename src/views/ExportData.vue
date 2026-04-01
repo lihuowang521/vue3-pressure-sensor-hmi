@@ -18,6 +18,17 @@ const flangeIdList = computed(() => {
   return sensorStore.getFlangeIdsByPipeId(selectedPipeId.value);
 });
 
+// 辅助函数：格式化本地时间为 yyyy-MM-ddTHH:mm 格式
+const formatLocalDateTime = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
 // 快速时间范围选择
 const setQuickTimeRange = (duration) => {
   const now = new Date();
@@ -41,8 +52,9 @@ const setQuickTimeRange = (duration) => {
       break;
   }
 
-  startTime.value = startDate.toISOString().slice(0, 16);
-  endTime.value = now.toISOString().slice(0, 16);
+  // 使用本地时间格式，避免时区转换问题
+  startTime.value = formatLocalDateTime(startDate);
+  endTime.value = formatLocalDateTime(now);
 };
 
 // 导出数据

@@ -73,50 +73,53 @@ export const connectMqtt = () => {
         }
 
         // 处理LoRaWAN数据格式
-        let sensorData = data;
+        let sensorDataList = [];
         if (data.data) {
           // 解析Base64编码的传感器数据
-          sensorData = parseLoraData(data);
-          if (!sensorData) {
+          sensorDataList = parseLoraData(data);
+          if (!sensorDataList || sensorDataList.length === 0) {
             console.error("解析传感器数据失败");
             return;
           }
         }
 
-        // 执行数据校验
-        const { valid, errors } = validateSensorData(sensorData);
-        if (!valid) {
-          // 校验失败：记录日志+弹窗提示，终止后续处理
-          const errorMsg = errors.map((e) => e.message).join("；");
-          console.error(`数据校验失败：`, errors);
-          alert(`【数据校验失败】${errorMsg}`);
-          return; // 跳过无效数据，避免污染存储/Pinia
+        // 遍历处理每个传感器数据
+        for (const sensorData of sensorDataList) {
+          // 执行数据校验
+          const { valid, errors } = validateSensorData(sensorData);
+          if (!valid) {
+            // 校验失败：记录日志+弹窗提示，终止后续处理
+            const errorMsg = errors.map((e) => e.message).join("；");
+            console.error(`数据校验失败：`, errors);
+            alert(`【数据校验失败】${errorMsg}`);
+            continue; // 跳过无效数据，继续处理下一个
+          }
+
+          // 校验通过：更新最新数据
+          receivedSensorData.value = sensorData;
+
+          // 构建历史数据项
+          const historyItem = {
+            ...sensorData,
+            // 兜底：确保parsed_time存在，格式统一为本地字符串
+            parsed_time: sensorData.parsed_time || new Date().toLocaleString(),
+          };
+          sensorDataHistory.value.push(historyItem);
+          // 只保留最新521条历史数据
+          if (sensorDataHistory.value.length > 521) {
+            sensorDataHistory.value.shift();
+          }
+
+          // 5. 持久化到本地存储（防止页面刷新丢失）
+          localStorage.setItem("latestSensorData", JSON.stringify(receivedSensorData.value));
+          localStorage.setItem("sensorDataHistory", JSON.stringify(sensorDataHistory.value));
+
+          // 6. 同步到Pinia仓库
+          const sensorStore = await import("@/stores/sensorStore").then((mod) =>
+            mod.useSensorStore(),
+          );
+          sensorStore.addRawMqttData(sensorData);
         }
-
-        // 校验通过：更新最新数据
-        receivedSensorData.value = sensorData;
-
-        // 构建历史数据项
-        const historyItem = {
-          ...sensorData,
-          // 兜底：确保parsed_time存在，格式统一为本地字符串
-          parsed_time: sensorData.parsed_time || new Date().toLocaleString(),
-        };
-        sensorDataHistory.value.push(historyItem);
-        // 只保留最新521条历史数据
-        if (sensorDataHistory.value.length > 521) {
-          sensorDataHistory.value.shift();
-        }
-
-        // 5. 持久化到本地存储（防止页面刷新丢失）
-        localStorage.setItem("latestSensorData", JSON.stringify(receivedSensorData.value));
-        localStorage.setItem("sensorDataHistory", JSON.stringify(sensorDataHistory.value));
-
-        // 6. 同步到Pinia仓库（移除数组兼容，仅处理单对象）
-        const sensorStore = await import("@/stores/sensorStore").then((mod) =>
-          mod.useSensorStore(),
-        );
-        sensorStore.addRawMqttData(sensorData); // 直接传入单对象，无需遍历
       } catch (err) {
         // 解析失败/其他异常处理
         console.error("解析消息失败：", err);
@@ -130,62 +133,86 @@ export const connectMqtt = () => {
         // 解码Base64数据
         const binaryData = atob(loraData.data);
         console.log("解码后的数据长度：", binaryData.length);
-        console.log("解码后的数据：", binaryData);
+
+        // 转换为十六进制字符串并打印
+        let hexString = "";
+        for (let i = 0; i < binaryData.length; i++) {
+          const hex = binaryData.charCodeAt(i).toString(16).padStart(2, "0");
+          hexString += hex + " ";
+        }
+        console.log("十六进制数据：", hexString.trim());
 
         // 验证帧头帧尾（AA 55 和 55 AA）
-        const frameHeader = binaryData.charCodeAt(0) + binaryData.charCodeAt(1);
-        const frameFooter =
-          binaryData.charCodeAt(binaryData.length - 2) +
-          binaryData.charCodeAt(binaryData.length - 1);
-        if (frameHeader !== 170 + 85 || frameFooter !== 85 + 170) {
+        const frameHeader1 = binaryData.charCodeAt(0);
+        const frameHeader2 = binaryData.charCodeAt(1);
+        const frameFooter1 = binaryData.charCodeAt(binaryData.length - 2);
+        const frameFooter2 = binaryData.charCodeAt(binaryData.length - 1);
+
+        // console.log("帧头：", frameHeader1.toString(16), frameHeader2.toString(16));
+        // console.log("帧尾：", frameFooter1.toString(16), frameFooter2.toString(16));
+
+        if (
+          frameHeader1 !== 0xaa ||
+          frameHeader2 !== 0x55 ||
+          frameFooter1 !== 0x55 ||
+          frameFooter2 !== 0xaa
+        ) {
           console.error("帧头帧尾验证失败");
-          return null;
+          return [];
         }
 
-        // 解析子帧标识
-        const subframeId = binaryData.charCodeAt(2);
-        let basePosition = 1;
-        if (subframeId === 7) {
-          basePosition = 7;
-        }
-
-        // 解析传感器数据（处理6个传感器）
+        // 解析传感器数据（每个传感器占6字节）
         const sensorDataList = [];
-        for (let i = 0; i < 6; i++) {
-          const start = 3 + i * 6;
-          if (start + 6 <= binaryData.length) {
-            const sensorBytes = binaryData.substr(start, 6);
-            const sensorPosition = basePosition + i;
-            const positionAngle = (sensorPosition - 1) * 30;
+        const sensorCount = (binaryData.length - 4) / 6; // 减去帧头帧尾4字节
+        console.log("传感器数量：", sensorCount);
 
-            // 解析压力值（假设前4字节为压力数据）
-            let pressure = 0;
-            for (let j = 0; j < 4; j++) {
-              pressure += sensorBytes.charCodeAt(j) * Math.pow(256, j);
-            }
-            pressure = pressure / 1000; // 转换为kPa
+        for (let i = 0; i < sensorCount; i++) {
+          const start = 2 + i * 6; // 跳过2字节帧头
+          if (start + 6 <= binaryData.length - 2) {
+            // 留出2字节帧尾
+            const sensorId = binaryData.charCodeAt(start);
+            const pressureHigh = binaryData.charCodeAt(start + 1);
+            const pressureLow = binaryData.charCodeAt(start + 2);
+            const signalStrength = binaryData.charCodeAt(start + 3);
+            const batteryHigh = binaryData.charCodeAt(start + 4);
+            const batteryLow = binaryData.charCodeAt(start + 5);
 
+            // 计算压力值（高八位和低八位组合）
+            const pressure = (pressureHigh << 8) + pressureLow;
+
+            // 计算电池电压（高八位和低八位组合，单位：mV）
+            const batteryVoltage = ((batteryHigh << 8) + batteryLow) / 1000;
+
+            // 计算信号强度（这里假设signalStrength是dBm值）
+            const signalStrengthDbm = -signalStrength;
+
+            console.log(
+              `传感器${sensorId}：压力=${pressure}，信号强度=${signalStrengthDbm}dBm，电池电压=${batteryVoltage}V`,
+            );
+
+            // 使用ISO格式时间字符串，确保与前端选择的时间格式一致
+            const currentTime = new Date();
             sensorDataList.push({
               device_id: loraData.devEUI || "unknown",
               pipe_id: "P001",
               flange_id: "F01",
-              sensor_position: sensorPosition,
-              position_angle: positionAngle,
+              sensor_position: sensorId,
+              position_angle: (sensorId - 1) * 30,
               pressure: pressure,
               raw_pressure: pressure,
-              battery_voltage: 3.5, // 假设值
-              signal_strength: -75, // 假设值
-              parsed_time: new Date().toLocaleString(),
+              battery_voltage: batteryVoltage,
+              signal_strength: signalStrengthDbm,
+              parsed_time: currentTime.toISOString(),
               is_abnormal: pressure > 300 ? 1 : 0,
             });
           }
         }
 
-        // 返回第一个传感器数据（可根据需要返回所有数据）
-        return sensorDataList[0] || null;
+        console.log("解析到的传感器数据：", sensorDataList);
+        return sensorDataList;
       } catch (error) {
         console.error("解析LoRa数据失败：", error);
-        return null;
+        return [];
       }
     }
 

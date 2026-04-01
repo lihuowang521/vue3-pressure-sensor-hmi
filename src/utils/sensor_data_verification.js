@@ -57,16 +57,16 @@ function validateSingleSensorItem(item) {
     });
   }
 
-  // 规则2：pressure 必须是有效数字（0-400kPa）
+  // 规则2：pressure 必须是有效数字（0-4000kPa，根据实际传感器范围调整）
   if (typeof item.pressure !== "number" || isNaN(item.pressure)) {
     errors.push({
       field: "pressure",
       message: `${locationInfo} 压力值（pressure）必须为有效数字（非NaN）`,
     });
-  } else if (item.pressure < 0 || item.pressure > 400000000000000000) {
+  } else if (item.pressure < 0 || item.pressure > 4000) {
     errors.push({
       field: "pressure",
-      message: `${locationInfo} 压力值必须在0-4000000000000kPa之间（当前值：${item.pressure} 危险！！！！！）`,
+      message: `${locationInfo} 压力值必须在0-4000kPa之间（当前值：${item.pressure} 危险！！！！！）`,
     });
   }
 
@@ -86,6 +86,28 @@ function validateSingleSensorItem(item) {
     errors.push({
       field: "device_id",
       message: `${locationInfo} 设备ID（device_id）必须存在且为字符串`,
+    });
+  }
+
+  // 规则5：battery_voltage 必须是有效数字（如果存在）
+  if (
+    item.battery_voltage !== undefined &&
+    (typeof item.battery_voltage !== "number" || isNaN(item.battery_voltage))
+  ) {
+    errors.push({
+      field: "battery_voltage",
+      message: `${locationInfo} 电池电压（battery_voltage）必须为有效数字（非NaN）`,
+    });
+  }
+
+  // 规则6：signal_strength 必须是有效数字（如果存在）
+  if (
+    item.signal_strength !== undefined &&
+    (typeof item.signal_strength !== "number" || isNaN(item.signal_strength))
+  ) {
+    errors.push({
+      field: "signal_strength",
+      message: `${locationInfo} 信号强度（signal_strength）必须为有效数字（非NaN）`,
     });
   }
 

@@ -54,8 +54,20 @@ const setQuickTimeRange = (duration) => {
       break;
   }
 
-  startTime.value = startDate.toISOString().slice(0, 16);
-  endTime.value = now.toISOString().slice(0, 16);
+  // 使用本地时间格式，避免时区转换问题
+  startTime.value = formatLocalDateTime(startDate);
+  endTime.value = formatLocalDateTime(now);
+};
+
+// 辅助函数：格式化本地时间为 yyyy-MM-ddTHH:mm 格式
+const formatLocalDateTime = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
 const goBack = () => {
@@ -81,6 +93,14 @@ const queryData = () => {
   }
 
   const sensorPosition = parseInt(selectedSensor.value.replace("sensor", ""), 10);
+  console.log("查询参数:", {
+    pipeId: selectedPipeId.value,
+    flangeId: selectedFlangeId.value,
+    sensorPosition: sensorPosition,
+    startTime: startTime.value,
+    endTime: endTime.value,
+  });
+
   queryResult.value = sensorStore.getHistoryData(
     selectedPipeId.value,
     selectedFlangeId.value,
@@ -88,6 +108,14 @@ const queryData = () => {
     startTime.value,
     endTime.value,
   );
+
+  console.log("查询结果数据:", queryResult.value);
+  console.log("数据长度:", queryResult.value.length);
+
+  if (queryResult.value.length === 0) {
+    alert("未找到符合条件的数据");
+  }
+
   initChart(queryResult.value);
 };
 
@@ -95,33 +123,77 @@ const queryData = () => {
 let lineChart = null;
 const initChart = (data) => {
   const chartDom = document.querySelector("#line-chart");
-  if (!chartDom) return;
+  if (!chartDom) {
+    console.error("图表容器未找到");
+    return;
+  }
+
+  // 销毁旧实例
+  if (lineChart) {
+    lineChart.dispose();
+    lineChart = null;
+  }
+
   lineChart = echarts.init(chartDom);
+
+  // 处理数据
+  const xAxisData = data.map((item) => item.parsed_time);
+  const seriesData = data.map((item) => item.pressure);
+
+  console.log("图表X轴数据:", xAxisData);
+  console.log("图表系列数据:", seriesData);
+
   const option = {
     tooltip: {
       trigger: "axis",
       axisPointer: {
         animation: false,
       },
+      formatter: function (params) {
+        return `${params[0].name}<br/>${params[0].seriesName}: ${params[0].value} kPa`;
+      },
     },
     xAxis: {
       type: "category",
-      data: data.map((item) => item.parsed_time),
+      data: xAxisData,
+      axisLabel: {
+        rotate: 45,
+        fontSize: 10,
+      },
     },
     yAxis: {
       type: "value",
+      name: "压力 (kPa)",
+      axisLabel: {
+        formatter: "{value} kPa",
+      },
     },
     series: [
       {
-        data: data.map((item) => item.pressure),
+        data: seriesData,
         type: "line",
         name: "压力",
-        axisLabel: {
-          formatter: (value) => `${value} kPa`,
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 6,
+        lineStyle: {
+          width: 2,
+        },
+        itemStyle: {
+          color: "#667eea",
         },
       },
     ],
+    grid: {
+      left: "10%",
+      right: "10%",
+      bottom: "20%",
+      top: "10%",
+      containLabel: true,
+    },
   };
+
+  console.log("图表配置:", option);
   lineChart.setOption(option);
 };
 
@@ -132,8 +204,8 @@ onMounted(() => {
   const now = new Date();
   const startDate = new Date();
   startDate.setDate(now.getDate() - 1);
-  startTime.value = startDate.toISOString().slice(0, 16);
-  endTime.value = now.toISOString().slice(0, 16);
+  startTime.value = formatLocalDateTime(startDate);
+  endTime.value = formatLocalDateTime(now);
 
   // 初始化并开始更新时间
   updateTime();
@@ -233,15 +305,16 @@ onUnmounted(() => {
             📊 压力趋势折线图<br />
             <small>选择时间范围后显示数据</small>
           </div>
-          <div v-else class="data-summary">
-            <div class="summary-item">
-              <span class="summary-label">数据条数：</span>
-              <span class="summary-value">{{ queryResult.length }}</span>
-            </div>
-            <div class="summary-item">
-              <span class="summary-label">时间范围：</span>
-              <span class="summary-value">{{ startTime }} 至 {{ endTime }}</span>
-            </div>
+        </div>
+        <!-- 数据摘要，与图表容器同级 -->
+        <div v-if="queryResult.length > 0" class="data-summary">
+          <div class="summary-item">
+            <span class="summary-label">数据条数：</span>
+            <span class="summary-value">{{ queryResult.length }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">时间范围：</span>
+            <span class="summary-value">{{ startTime }} 至 {{ endTime }}</span>
           </div>
         </div>
       </div>
