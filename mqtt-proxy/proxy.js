@@ -1,7 +1,7 @@
-const express = require("express");
-const http = require("http");
-const WebSocket = require("ws");
-const mqtt = require("mqtt");
+import express from "express";
+import http from "http";
+import WebSocket from "ws";
+import mqtt from "mqtt";
 
 const app = express();
 const server = http.createServer(app);
