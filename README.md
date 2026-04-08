@@ -1,5 +1,7 @@
 # vue3-sensor 项目:智能压力传感器人机交互界面设计（毕业设计）
 
+small分支由于项目后端学长去搞别的项目去了，暂时停滞。main分支重启，自己处理单片机相关内容
+
 项目已打包成app形式，android文件夹下可以下载
 页面已部署到https://lihuowang521.github.io/vue3-pressure-sensor-page/
 
