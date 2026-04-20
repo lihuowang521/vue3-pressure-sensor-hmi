@@ -32,7 +32,7 @@ const initChart = () => {
       formatter: function (params) {
         const time = new Date(params[0].data[0]);
         const timeStr = time.toLocaleString(); // 显示年月日时分秒
-        return `${timeStr}：${params[0].data[1].toFixed(1)} kPa`;
+        return `${timeStr}：${params[0].data[1].toFixed(1)} g`;
       },
       axisPointer: {
         animation: false,
@@ -58,16 +58,16 @@ const initChart = () => {
     },
     yAxis: {
       type: "value",
-      name: "压力 (kPa)",
+      name: "压力 (g)",
       boundaryGap: [0, "10%"], // 缩小边距，更紧凑
       splitLine: { show: false },
       axisLabel: {
-        formatter: "{value} kPa",
+        formatter: "{value} g",
       },
     },
     series: [
       {
-        name: "压力值",
+        name: "重量值",
         type: "line",
         showSymbol: true,
         symbolSize: 4,
@@ -89,6 +89,9 @@ const updateChart = () => {
   const currentPipeId = selectedPipeId.value;
   const currentFlangeId = selectedFlangeId.value;
 
+  // 计算1分钟前的时间戳
+  const oneMinuteAgo = Date.now() - 60 * 1000;
+
   const validChartData = sensorStore.chartData
     .filter((item) => item.parsed_time)
     .filter((item) => {
@@ -100,7 +103,8 @@ const updateChart = () => {
       const value = item[selectedSensor.value] || 0;
       return [timeStamp, value];
     })
-    .filter((item) => !isNaN(item[0]));
+    .filter((item) => !isNaN(item[0]))
+    .filter((item) => item[0] >= oneMinuteAgo);
 
   let yAxisMin = 0;
   let yAxisMax = 10;
@@ -216,7 +220,13 @@ onUnmounted(() => {
     <!-- 实时压力监控 -->
     <div class="main-content">
       <section class="gauge-panel">
-        <h2 class="panel-title">实时压力监控</h2>
+        <div class="panel-header">
+          <h2 class="panel-title">实时压力监控</h2>
+          <div class="temperature-display">
+            <span class="temp-label">当前温度：</span>
+            <span class="temp-value">{{ sensorStore.currentTemperature }} °C</span>
+          </div>
+        </div>
         <div class="gauge-container">
           <div class="sensor-circle">
             <!-- 传感器1 (0°) -->
@@ -297,7 +307,7 @@ onUnmounted(() => {
 
       <section class="chart-panel">
         <h2 class="panel-title">压力趋势图</h2>
-        <div class="time-range">最近1小时数据</div>
+        <div class="time-range">最近1分钟数据</div>
         <div class="sensor-selector">
           <label for="sensor-select">选择传感器：</label>
           <select
@@ -335,11 +345,11 @@ onUnmounted(() => {
           </div>
           <div class="param-item">
             <div class="param-label">报警上限</div>
-            <div class="param-value">400 kPa</div>
+            <div class="param-value">5000 g</div>
           </div>
           <div class="param-item">
             <div class="param-label">报警下限</div>
-            <div class="param-value">0 kPa</div>
+            <div class="param-value">0 g</div>
           </div>
           <div class="param-item">
             <div class="param-label">通信波特率</div>
@@ -347,8 +357,8 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="alert-area" id="alertArea">
-          <strong>⚠️ 压力报警</strong><br />
-          当前压力未超出设定阈值范围
+          <strong>⚠️ 重量报警</strong><br />
+          当前重量未超出设定阈值范围
         </div>
       </div>
     </section>
@@ -429,12 +439,39 @@ onUnmounted(() => {
   align-items: center;
 }
 
+.panel-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
 .panel-title {
   font-size: 18px;
   color: #2c3e50;
-  margin-bottom: 20px;
-  text-align: center;
+  margin: 0;
+  text-align: left;
   font-weight: 600;
+}
+
+.temperature-display {
+  background-color: #f0f8ff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border-left: 3px solid #1890ff;
+}
+
+.temp-label {
+  font-size: 14px;
+  color: #666;
+  margin-right: 5px;
+}
+
+.temp-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1890ff;
 }
 
 .gauge-container {

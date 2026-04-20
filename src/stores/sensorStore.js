@@ -10,19 +10,21 @@ export const useSensorStore = defineStore(
 
     // 12个传感器实时数据（靠下面的loadLatestSensorData更新）
     const sensorData = ref({
-      sensor1: "0.0 kPa",
-      sensor2: "0.0 kPa",
-      sensor3: "0.0 kPa",
-      sensor4: "0.0 kPa",
-      sensor5: "0.0 kPa",
-      sensor6: "0.0 kPa",
-      sensor7: "0.0 kPa",
-      sensor8: "0.0 kPa",
-      sensor9: "0.0 kPa",
-      sensor10: "0.0 kPa",
-      sensor11: "0.0 kPa",
-      sensor12: "0.0 kPa",
+      sensor1: "0.0 g",
+      sensor2: "0.0 g",
+      sensor3: "0.0 g",
+      sensor4: "0.0 g",
+      sensor5: "0.0 g",
+      sensor6: "0.0 g",
+      sensor7: "0.0 g",
+      sensor8: "0.0 g",
+      sensor9: "0.0 g",
+      sensor10: "0.0 g",
+      sensor11: "0.0 g",
+      sensor12: "0.0 g",
     });
+    // 当前温度
+    const currentTemperature = ref(0);
     // 从rawMqttData中获取指定管道法兰的最新传感器数据
     const loadLatestSensorData = (pipeId, flangeId) => {
       try {
@@ -34,7 +36,7 @@ export const useSensorStore = defineStore(
         if (filteredData.length === 0) {
           // 如果没有数据，重置所有传感器值
           for (let i = 1; i <= 12; i++) {
-            sensorData.value[`sensor${i}`] = "0.0 kPa";
+            sensorData.value[`sensor${i}`] = "0.0 g";
           }
           return;
         }
@@ -49,7 +51,7 @@ export const useSensorStore = defineStore(
         // 初始化传感器数据对象
         const latestSensorData = {};
         for (let i = 1; i <= 12; i++) {
-          latestSensorData[`sensor${i}`] = "0.0 kPa";
+          latestSensorData[`sensor${i}`] = "0.0 g";
         }
 
         // 创建一个对象来存储每个传感器的最新数据
@@ -76,7 +78,7 @@ export const useSensorStore = defineStore(
         Object.keys(sensorLatestData).forEach((sensorKey) => {
           const item = sensorLatestData[sensorKey];
           const pressureInKPa = item.pressure;
-          latestSensorData[sensorKey] = `${pressureInKPa.toFixed(1)} kPa`;
+          latestSensorData[sensorKey] = `${pressureInKPa.toFixed(1)} g`;
         });
 
         // 更新sensorData
@@ -135,7 +137,14 @@ export const useSensorStore = defineStore(
       // 将Map转换为数组
       const chartArray = Array.from(chartMap.values());
       chartArray.sort((a, b) => new Date(a.parsed_time) - new Date(b.parsed_time)); // 按时间升序排序
-      return chartArray.slice(-60); // 只保留最近60条数据，用于图表展示
+
+      // 只保留最近1分钟的数据
+      const oneMinuteAgo = Date.now() - 60 * 1000;
+      const recentChartArray = chartArray.filter(
+        (item) => new Date(item.parsed_time).getTime() >= oneMinuteAgo,
+      );
+
+      return recentChartArray; // 只返回最近1分钟的数据，用于图表展示
     });
 
     // ========== 基础方法 ==========
@@ -189,6 +198,11 @@ export const useSensorStore = defineStore(
           return;
         }
 
+        // 更新温度数据
+        if (typeof data.temperature === "number" && !isNaN(data.temperature)) {
+          currentTemperature.value = data.temperature;
+        }
+
         if (
           typeof data.sensor_position !== "number" ||
           typeof data.pressure !== "number" ||
@@ -203,7 +217,7 @@ export const useSensorStore = defineStore(
         const pressureInKPa = data.pressure;
         const sensorKey = `sensor${data.sensor_position}`;
 
-        sensorData.value[sensorKey] = `${pressureInKPa.toFixed(1)} kPa`;
+        sensorData.value[sensorKey] = `${pressureInKPa.toFixed(1)} g`;
       } catch (error) {
         console.error("更新传感器数据失败:", error);
       }
@@ -386,6 +400,7 @@ export const useSensorStore = defineStore(
     return {
       // 响应式状态
       sensorData,
+      currentTemperature,
       selectedPipeline,
       selectedFlange,
       historyData,

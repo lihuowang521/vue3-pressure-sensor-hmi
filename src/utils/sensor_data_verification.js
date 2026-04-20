@@ -37,35 +37,42 @@ function validateSingleSensorItem(item) {
 
   const pipeId = item.pipe_id || "未知管道";
   const flangeId = item.flange_id || "未知法兰";
-  const sensorPosition = item.sensor_position ?? "未知";
   const parsedTime = item.parsed_time || "未知时间";
 
-  const locationInfo = `[${pipeId} - ${flangeId} - 传感器${sensorPosition} - ${parsedTime}]`;
+  const locationInfo = `[${pipeId} - ${flangeId} - ${parsedTime}]`;
 
-  // 规则1：sensor_position 必须是有效数字（1-12）
-  if (typeof item.sensor_position !== "number" || isNaN(item.sensor_position)) {
+  // 规则1：检查至少有一个pressure字段
+  let hasPressureField = false;
+  for (let i = 1; i <= 12; i++) {
+    if (typeof item[`pressure${i}`] === "number" && !isNaN(item[`pressure${i}`])) {
+      hasPressureField = true;
+      break;
+    }
+  }
+  
+  if (!hasPressureField) {
     errors.push({
-      field: "sensor_position",
-      message: `${locationInfo} 传感器位置（sensor_position）必须为有效数字（非NaN）`,
-    });
-  } else if (item.sensor_position < 1 || item.sensor_position > 12) {
-    errors.push({
-      field: "sensor_position",
-      message: `${locationInfo} 传感器位置必须在1-12之间（当前值：${item.sensor_position}）`,
+      field: "pressure",
+      message: `${locationInfo} 至少需要一个有效的压力值字段（pressure1-pressure12）`,
     });
   }
 
-  // 规则2：pressure 必须是有效数字（0-400kPa）
-  if (typeof item.pressure !== "number" || isNaN(item.pressure)) {
-    errors.push({
-      field: "pressure",
-      message: `${locationInfo} 压力值（pressure）必须为有效数字（非NaN）`,
-    });
-  } else if (item.pressure < 0 || item.pressure > 400) {
-    errors.push({
-      field: "pressure",
-      message: `${locationInfo} 压力值必须在0-400kPa之间（当前值：${item.pressure} 危险！！！！！）`,
-    });
+  // 规则2：校验所有pressure字段（如果存在）
+  for (let i = 1; i <= 12; i++) {
+    const pressureField = `pressure${i}`;
+    if (item[pressureField] !== undefined) {
+      if (typeof item[pressureField] !== "number" || isNaN(item[pressureField])) {
+        errors.push({
+          field: pressureField,
+          message: `${locationInfo} ${pressureField} 必须为有效数字（非NaN）`,
+        });
+      } else if (item[pressureField] < 0 || item[pressureField] > 5000) {
+        errors.push({
+          field: pressureField,
+          message: `${locationInfo} ${pressureField} 必须在0-5000g之间（当前值：${item[pressureField]}）`,
+        });
+      }
+    }
   }
 
   return errors;

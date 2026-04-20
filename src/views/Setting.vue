@@ -11,14 +11,14 @@ const router = useRouter();
 const DEFAULT_SETTINGS = {
   samplingRate: "100",
   lowerThreshold: "50",
-  upperThreshold: "200",
+  upperThreshold: "5000",
   baudRate: "115200",
   dataBits: "8",
   stopBits: "1",
   parity: "none",
   protocolAddress: "ws://127.0.0.1:8083/mqtt",
   zeroCalibration: "0.0",
-  fullScaleCalibration: "300.0",
+  fullScaleCalibration: "5000.0",
 };
 
 // 响应式设置数据
@@ -50,8 +50,8 @@ const validateSettings = () => {
     return false;
   }
   // 校验数值范围
-  if (lower < 0 || lower > 1000 || upper < 0 || upper > 1000) {
-    showStatusMessage("报警阈值需在0-1000 kPa之间！", "error");
+  if (lower < 0 || lower > 5000 || upper < 0 || upper > 5000) {
+    showStatusMessage("报警阈值需在0-5000 g之间！", "error");
     return false;
   }
   // 校验采样频率
@@ -66,8 +66,8 @@ const validateSettings = () => {
     return false;
   }
   // 校验满量程值
-  if (fullScale <= 0 || fullScale > 1000) {
-    showStatusMessage("满量程校准值需在0-1000 kPa之间！", "error");
+  if (fullScale <= 0 || fullScale > 5000) {
+    showStatusMessage("满量程校准值需在0-5000 g之间！", "error");
     return false;
   }
   return true;
@@ -195,25 +195,25 @@ onUnmounted(() => {
         </h2>
         <div class="threshold-group">
           <div class="form-group">
-            <label class="form-label">报警下限 (kPa)</label>
+            <label class="form-label">报警下限 (g)</label>
             <input
               type="number"
               class="form-input"
               v-model="settings.lowerThreshold"
               min="0"
-              max="1000"
+              max="5000"
               step="0.1"
             />
             <div class="form-help">低于此值将触发下限报警</div>
           </div>
           <div class="form-group">
-            <label class="form-label">报警上限 (kPa)</label>
+            <label class="form-label">报警上限 (g)</label>
             <input
               type="number"
               class="form-input"
               v-model="settings.upperThreshold"
               min="0"
-              max="1000"
+              max="5000"
               step="0.1"
             />
             <div class="form-help">高于此值将触发上限报警</div>
@@ -291,14 +291,14 @@ onUnmounted(() => {
             <div class="form-help">当前零点偏移值（不可修改）</div>
           </div>
           <div class="form-group">
-            <label class="form-label">满量程校准值 (kPa)</label>
+            <label class="form-label">满量程校准值 (g)</label>
             <input
               type="number"
               class="form-input"
               v-model="settings.fullScaleCalibration"
               step="0.1"
               min="0"
-              max="1000"
+              max="5000"
             />
             <div class="form-help">传感器满量程值</div>
           </div>

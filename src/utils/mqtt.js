@@ -123,11 +123,27 @@ export const connectMqtt = () => {
         localStorage.setItem("latestSensorData", JSON.stringify(receivedSensorData.value));
         localStorage.setItem("sensorDataHistory", JSON.stringify(sensorDataHistory.value));
 
-        // 6. 同步到Pinia仓库（移除数组兼容，仅处理单对象）
+        // 6. 同步到Pinia仓库（转换为传感器数据格式）
         const sensorStore = await import("@/stores/sensorStore").then((mod) =>
           mod.useSensorStore(),
         );
-        sensorStore.addRawMqttData(data); // 直接传入单对象，无需遍历
+
+        // 转换pressure1-pressure12为sensor1-sensor12格式
+        for (let i = 1; i <= 12; i++) {
+          const pressureField = `pressure${i}`;
+          const sensorData = {
+            pipe_id: data.pipe_id,
+            flange_id: data.flange_id,
+            sensor_position: i,
+            pressure: data[pressureField] || 0, // 缺失的字段默认为0
+            parsed_time: data.parsed_time || new Date().toLocaleString(),
+            // 保留其他字段
+            temperature: data.temperature,
+            rssi: data.rssi,
+            battery_voltage: data.battery_voltage,
+          };
+          sensorStore.addRawMqttData(sensorData);
+        }
       } catch (err) {
         // 解析失败/其他异常处理
         console.error("解析MQTT消息失败：", err);
@@ -174,14 +190,13 @@ const publish = ref({
   payload: {
     pipe_id: "P001",
     flange_id: "F01",
-    sensor_position: 1,
-    position_angle: 0.0,
-    pressure: 1.0,
-    raw_pressure: 1.0,
-    battery_voltage: 3.5,
-    signal_strength: -70,
+    pressure1: 1.0,
+    pressure2: 0.0,
+    pressure3: 0.0,
+    temperature: 25.5,
     parsed_time: new Date().toLocaleString(), // 发布时用当前时间
-    is_abnormal: 0,
+    rssi: -70,
+    battery_voltage: 3.5,
   },
   qos: 0,
 });
@@ -226,10 +241,26 @@ export const initSensorData = async () => {
       const parsedData = JSON.parse(latestData);
       receivedSensorData.value = parsedData;
 
-      // 同步到Pinia（仅单对象）
+      // 同步到Pinia（转换为传感器数据格式）
       const sensorStoreModule = await import("@/stores/sensorStore");
       const sensorStore = sensorStoreModule.useSensorStore();
-      sensorStore.addRawMqttData(parsedData);
+
+      // 转换pressure1-pressure12为sensor1-sensor12格式
+      for (let i = 1; i <= 12; i++) {
+        const pressureField = `pressure${i}`;
+        const sensorData = {
+          pipe_id: parsedData.pipe_id,
+          flange_id: parsedData.flange_id,
+          sensor_position: i,
+          pressure: parsedData[pressureField] || 0, // 缺失的字段默认为0
+          parsed_time: parsedData.parsed_time || new Date().toLocaleString(),
+          // 保留其他字段
+          temperature: parsedData.temperature,
+          rssi: parsedData.rssi,
+          battery_voltage: parsedData.battery_voltage,
+        };
+        sensorStore.addRawMqttData(sensorData);
+      }
     }
 
     // 加载历史数据

@@ -117,7 +117,7 @@ const initChart = (data) => {
         type: "line",
         name: "压力",
         axisLabel: {
-          formatter: (value) => `${value} kPa`,
+          formatter: (value) => `${value} g`,
         },
       },
     ],
@@ -259,7 +259,7 @@ onUnmounted(() => {
                 <th>管道</th>
                 <th>法兰</th>
                 <th>传感器位置</th>
-                <th>压力值 (kPa)</th>
+                <th>压力值 (g)</th>
               </tr>
             </thead>
             <tbody>
