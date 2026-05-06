@@ -25,6 +25,36 @@ export const useSensorStore = defineStore(
     });
     // 当前温度
     const currentTemperature = ref(0);
+
+    // 警告消息（用于界面弹窗显示）
+    const warningMessages = ref([]);
+
+    // 添加警告消息
+    const addWarning = (message) => {
+      const warning = {
+        id: Date.now() + Math.random(),
+        message,
+        timestamp: new Date().toLocaleString(),
+        type: "warning",
+      };
+      warningMessages.value.push(warning);
+      // 自动移除旧警告（保留最近10条）
+      if (warningMessages.value.length > 10) {
+        warningMessages.value.shift();
+      }
+      // 3秒后自动消失
+      setTimeout(() => {
+        const index = warningMessages.value.findIndex((w) => w.id === warning.id);
+        if (index > -1) {
+          warningMessages.value.splice(index, 1);
+        }
+      }, 5000);
+    };
+
+    // 清除警告消息
+    const clearWarnings = () => {
+      warningMessages.value = [];
+    };
     // 从rawMqttData中获取指定管道法兰的最新传感器数据
     const loadLatestSensorData = (pipeId, flangeId) => {
       try {
@@ -123,6 +153,7 @@ export const useSensorStore = defineStore(
             displayTime: new Date(item.parsed_time).toLocaleTimeString(),
             pipeline: item.pipe_id,
             flange: item.flange_id,
+            temperature: item.temperature || 0,
           });
         }
 
@@ -132,6 +163,11 @@ export const useSensorStore = defineStore(
         // 动态添加传感器数据，如 sensor1, sensor2, ...
         const sensorKey = `sensor${item.sensor_position}`;
         chartItem[sensorKey] = item.pressure; // 存储压力值
+
+        // 更新温度数据
+        if (item.temperature !== undefined) {
+          chartItem.temperature = item.temperature;
+        }
       });
 
       // 将Map转换为数组
@@ -321,6 +357,7 @@ export const useSensorStore = defineStore(
             parsed_time: item.parsed_time,
             pipeline: item.pipe_id,
             flange: item.flange_id,
+            temperature: item.temperature,
             data: {},
           });
         }
@@ -346,6 +383,7 @@ export const useSensorStore = defineStore(
         "采集时间",
         "管线",
         "法兰",
+        "温度 (°C)",
         "传感器1",
         "传感器2",
         "传感器3",
@@ -365,6 +403,7 @@ export const useSensorStore = defineStore(
         item.parsed_time, // 后端采集时间
         item.pipeline,
         item.flange,
+        item.temperature || 0,
         item.data.sensor1 || 0,
         item.data.sensor2 || 0,
         item.data.sensor3 || 0,
@@ -406,6 +445,7 @@ export const useSensorStore = defineStore(
       historyData,
       chartData,
       rawMqttData,
+      warningMessages,
       // 计算属性
       getUniquePipeIds,
       // 方法
@@ -420,6 +460,8 @@ export const useSensorStore = defineStore(
       loadLatestSensorData,
       getHistoryData,
       deleteRawMqttData,
+      addWarning,
+      clearWarnings,
     };
   },
   {

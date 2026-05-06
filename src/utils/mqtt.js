@@ -97,14 +97,23 @@ export const connectMqtt = () => {
         // 2. 执行数据校验（核心逻辑）
         const { valid, errors } = validateSensorData(data);
         if (!valid) {
-          // 校验失败：记录日志+弹窗提示，终止后续处理
+          // 校验失败：记录日志+警告弹窗，但继续接收数据
           const errorMsg = errors.map((e) => e.message).join("；");
           console.error(`【${topic}】数据校验失败：`, errors);
-          alert(`【数据校验失败】${errorMsg}`);
-          return; // 跳过无效数据，避免污染存储/Pinia
+          
+          // 通过Pinia显示警告弹窗
+          try {
+            const sensorStore = await import("@/stores/sensorStore").then((mod) =>
+              mod.useSensorStore(),
+            );
+            sensorStore.addWarning(`数据校验失败：${errorMsg}`);
+          } catch (e) {
+            console.error("添加警告失败：", e);
+          }
+          // 继续处理数据，不终止
         }
 
-        // 校验通过：更新最新数据
+        // 更新最新数据（无论校验是否通过）
         receivedSensorData.value = data;
 
         // 构建历史数据项

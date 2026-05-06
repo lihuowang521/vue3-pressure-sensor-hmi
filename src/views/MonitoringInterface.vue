@@ -9,7 +9,9 @@ const sensorStore = useSensorStore();
 const selectedPipeId = ref("");
 const selectedFlangeId = ref("");
 // 传感器选择
-const selectedSensor = ref("sensor1");
+const selectedSensor1 = ref("sensor1");
+const selectedSensor2 = ref("sensor2");
+const selectedSensor3 = ref("sensor3");
 // 定时刷新定时器
 let refreshTimer = null;
 
@@ -32,11 +34,20 @@ const initChart = () => {
       formatter: function (params) {
         const time = new Date(params[0].data[0]);
         const timeStr = time.toLocaleString(); // 显示年月日时分秒
-        return `${timeStr}：${params[0].data[1].toFixed(1)} g`;
+        let result = `${timeStr}<br/>`;
+        params.forEach((param) => {
+          const unit = param.seriesName.includes("温度") ? " °C" : " g";
+          result += `${param.marker} ${param.seriesName}：${param.data[1].toFixed(1)}${unit}<br/>`;
+        });
+        return result;
       },
       axisPointer: {
         animation: false,
       },
+    },
+    legend: {
+      data: ["传感器1", "传感器2", "传感器3", "温度"],
+      bottom: 0,
     },
     xAxis: {
       type: "time",
@@ -44,35 +55,86 @@ const initChart = () => {
       // 修改核心：配置X轴只显示时分秒
       axisLabel: {
         formatter: function (value) {
-          // value是时间戳，转为时分秒
-          return new Date(value).toLocaleTimeString([], {
+          return new Date(value).toLocaleTimeString("zh-CN", {
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit",
           });
         },
-        fontSize: 12,
+        fontSize: 11,
+        interval: "auto",
+        rotate: 30,
+        hideOverlap: true,
+        margin: 8,
       },
       min: "dataMin",
       max: "dataMax",
+      boundaryGap: false,
     },
-    yAxis: {
-      type: "value",
-      name: "压力 (g)",
-      boundaryGap: [0, "10%"], // 缩小边距，更紧凑
-      splitLine: { show: false },
-      axisLabel: {
-        formatter: "{value} g",
+    yAxis: [
+      {
+        type: "value",
+        name: "重量 (g)",
+        boundaryGap: [0, "10%"], // 缩小边距，更紧凑
+        splitLine: { show: false },
+        axisLabel: {
+          formatter: "{value} g",
+        },
       },
-    },
+      {
+        type: "value",
+        name: "温度°C",
+        boundaryGap: [0, "10%"],
+        splitLine: { show: false },
+        axisLabel: {
+          formatter: "{value} °C",
+        },
+      },
+    ],
     series: [
       {
-        name: "重量值",
+        name: "传感器1",
         type: "line",
         showSymbol: true,
         symbolSize: 4,
         smooth: true, // 折线平滑
         data: [],
+        itemStyle: {
+          color: "#1890ff",
+        },
+      },
+      {
+        name: "传感器2",
+        type: "line",
+        showSymbol: true,
+        symbolSize: 4,
+        smooth: true,
+        data: [],
+        itemStyle: {
+          color: "#52c41a",
+        },
+      },
+      {
+        name: "传感器3",
+        type: "line",
+        showSymbol: true,
+        symbolSize: 4,
+        smooth: true,
+        data: [],
+        itemStyle: {
+          color: "#faad14",
+        },
+      },
+      {
+        name: "温度",
+        type: "line",
+        showSymbol: false,
+        smooth: true,
+        data: [],
+        yAxisIndex: 1,
+        itemStyle: {
+          color: "#f5222d",
+        },
       },
     ],
     grid: { left: "8%", right: "4%", bottom: "15%", top: "10%", containLabel: true },
@@ -81,8 +143,10 @@ const initChart = () => {
 };
 
 const updateChart = () => {
-  if (!lineChart || !selectedSensor.value || sensorStore.chartData.length === 0) {
-    lineChart?.setOption({ series: [{ data: [] }] });
+  if (!lineChart || sensorStore.chartData.length === 0) {
+    lineChart?.setOption({
+      series: [{ data: [] }, { data: [] }, { data: [] }, { data: [] }],
+    });
     return;
   }
 
@@ -92,34 +156,96 @@ const updateChart = () => {
   // 计算1分钟前的时间戳
   const oneMinuteAgo = Date.now() - 60 * 1000;
 
-  const validChartData = sensorStore.chartData
+  // 过滤数据
+  const filteredData = sensorStore.chartData
     .filter((item) => item.parsed_time)
     .filter((item) => {
       if (!currentPipeId || !currentFlangeId) return true;
       return item.pipeline === currentPipeId && item.flange === currentFlangeId;
     })
+    .filter((item) => new Date(item.parsed_time).getTime() >= oneMinuteAgo)
+    .sort((a, b) => new Date(a.parsed_time).getTime() - new Date(b.parsed_time).getTime());
+
+  // 准备各个系列的数据
+  const sensor1Data = filteredData
     .map((item) => {
       const timeStamp = new Date(item.parsed_time).getTime();
-      const value = item[selectedSensor.value] || 0;
+      const value = item[selectedSensor1.value] || 0;
       return [timeStamp, value];
     })
-    .filter((item) => !isNaN(item[0]))
-    .filter((item) => item[0] >= oneMinuteAgo);
+    .filter((item) => !isNaN(item[0]));
 
-  let yAxisMin = 0;
-  let yAxisMax = 10;
-  if (validChartData.length > 0) {
-    const values = validChartData.map((item) => item[1]);
-    const minVal = Math.min(...values);
-    const maxVal = Math.max(...values);
-    const padding = (maxVal - minVal) * 0.1 || 2;
-    yAxisMin = Math.max(0, minVal - padding);
-    yAxisMax = maxVal + padding;
-  }
+  const sensor2Data = filteredData
+    .map((item) => {
+      const timeStamp = new Date(item.parsed_time).getTime();
+      const value = item[selectedSensor2.value] || 0;
+      return [timeStamp, value];
+    })
+    .filter((item) => !isNaN(item[0]));
 
+  const sensor3Data = filteredData
+    .map((item) => {
+      const timeStamp = new Date(item.parsed_time).getTime();
+      const value = item[selectedSensor3.value] || 0;
+      return [timeStamp, value];
+    })
+    .filter((item) => !isNaN(item[0]));
+
+  const temperatureData = filteredData
+    .map((item) => {
+      const timeStamp = new Date(item.parsed_time).getTime();
+      const value = item.temperature || 0;
+      return [timeStamp, value];
+    })
+    .filter((item) => !isNaN(item[0]));
+
+  // 计算x轴范围，确保显示最近1分钟
+  const now = Date.now();
+  const xAxisMin = now - 60 * 1000;
+  const xAxisMax = now + 5000;
+
+  // 更新图表
   lineChart.setOption({
-    series: [{ data: validChartData }],
-    yAxis: { min: yAxisMin, max: yAxisMax },
+    xAxis: {
+      min: xAxisMin,
+      max: xAxisMax,
+    },
+    legend: {
+      data: [selectedSensor1.value, selectedSensor2.value, selectedSensor3.value, "温度"],
+      bottom: 0,
+    },
+    series: [
+      {
+        name: selectedSensor1.value,
+        data: sensor1Data,
+        itemStyle: {
+          color: "#1890ff",
+        },
+      },
+      {
+        name: selectedSensor2.value,
+        data: sensor2Data,
+        itemStyle: {
+          color: "#52c41a",
+        },
+      },
+      {
+        name: selectedSensor3.value,
+        data: sensor3Data,
+        itemStyle: {
+          color: "#faad14",
+        },
+      },
+      {
+        name: "温度",
+        data: temperatureData,
+        yAxisIndex: 1,
+        showSymbol: false,
+        itemStyle: {
+          color: "#f5222d",
+        },
+      },
+    ],
   });
 };
 
@@ -151,9 +277,9 @@ watch([selectedPipeId, selectedFlangeId], () => {
 });
 
 // 传感器选择变化
-const handleSensorChange = () => {
-  updateChart();
-};
+// const handleSensorChange = () => {
+//   updateChart();
+// };
 
 // 监听chartData变化，自动更新图表
 watch(
@@ -194,6 +320,14 @@ onUnmounted(() => {
 
 <template>
   <div class="container">
+    <!-- 警告消息弹窗（全局右上角） -->
+    <div class="warning-container">
+      <div v-for="warning in sensorStore.warningMessages" :key="warning.id" class="warning-toast">
+        <span class="warning-icon">⚠️</span>
+        <span class="warning-text">{{ warning.message }}</span>
+        <button class="warning-close" @click="sensorStore.clearWarnings()">×</button>
+      </div>
+    </div>
     <!-- 管道/法兰选择器 -->
     <section class="selector-panel">
       <div class="pipe-flange-selector">
@@ -309,12 +443,52 @@ onUnmounted(() => {
         <h2 class="panel-title">压力趋势图</h2>
         <div class="time-range">最近1分钟数据</div>
         <div class="sensor-selector">
-          <label for="sensor-select">选择传感器：</label>
+          <label for="sensor1-select">传感器1：</label>
           <select
-            id="sensor-select"
+            id="sensor1-select"
             class="sensor-select"
-            v-model="selectedSensor"
-            @change="handleSensorChange"
+            v-model="selectedSensor1"
+            @change="updateChart"
+          >
+            <option value="sensor1">传感器1</option>
+            <option value="sensor2">传感器2</option>
+            <option value="sensor3">传感器3</option>
+            <option value="sensor4">传感器4</option>
+            <option value="sensor5">传感器5</option>
+            <option value="sensor6">传感器6</option>
+            <option value="sensor7">传感器7</option>
+            <option value="sensor8">传感器8</option>
+            <option value="sensor9">传感器9</option>
+            <option value="sensor10">传感器10</option>
+            <option value="sensor11">传感器11</option>
+            <option value="sensor12">传感器12</option>
+          </select>
+          <label for="sensor2-select">传感器2：</label>
+          <select
+            id="sensor2-select"
+            class="sensor-select"
+            v-model="selectedSensor2"
+            @change="updateChart"
+          >
+            <option value="sensor1">传感器1</option>
+            <option value="sensor2">传感器2</option>
+            <option value="sensor3">传感器3</option>
+            <option value="sensor4">传感器4</option>
+            <option value="sensor5">传感器5</option>
+            <option value="sensor6">传感器6</option>
+            <option value="sensor7">传感器7</option>
+            <option value="sensor8">传感器8</option>
+            <option value="sensor9">传感器9</option>
+            <option value="sensor10">传感器10</option>
+            <option value="sensor11">传感器11</option>
+            <option value="sensor12">传感器12</option>
+          </select>
+          <label for="sensor3-select">传感器3：</label>
+          <select
+            id="sensor3-select"
+            class="sensor-select"
+            v-model="selectedSensor3"
+            @change="updateChart"
           >
             <option value="sensor1">传感器1</option>
             <option value="sensor2">传感器2</option>
@@ -548,18 +722,26 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 8px;
+  gap: 1px;
   margin-bottom: 15px;
+  flex-wrap: nowrap;
+}
+
+.sensor-selector label {
+  font-size: 14px;
+  color: #666;
+  white-space: nowrap;
 }
 
 .sensor-select {
-  padding: 8px 12px;
+  padding: 4px 6px;
   border: 1px solid #ced4da;
   border-radius: 6px;
   font-size: 14px;
   color: #495057;
   background-color: white;
   cursor: pointer;
+  min-width: 100px;
 }
 
 .chart-container {
@@ -649,6 +831,75 @@ onUnmounted(() => {
   }
   .parameters-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 警告消息弹窗样式 */
+.warning-container {
+  position: fixed !important;
+  top: 20px !important;
+  right: 20px !important;
+  z-index: 9999 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transform: none !important;
+}
+
+.warning-toast {
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+  border: 1px solid #ffeeba;
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 280px;
+  max-width: 400px;
+  animation: slideIn 0.3s ease-out;
+}
+
+.warning-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.warning-text {
+  flex: 1;
+  font-size: 13px;
+  color: #856404;
+  line-height: 1.4;
+}
+
+.warning-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #856404;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.warning-close:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
   }
 }
 </style>

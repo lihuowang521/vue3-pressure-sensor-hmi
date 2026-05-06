@@ -10,7 +10,7 @@ const router = useRouter();
 // 抽离默认配置常量（避免重复）
 const DEFAULT_SETTINGS = {
   samplingRate: "100",
-  lowerThreshold: "50",
+  lowerThreshold: "0",
   upperThreshold: "5000",
   baudRate: "115200",
   dataBits: "8",
@@ -202,7 +202,7 @@ onUnmounted(() => {
               v-model="settings.lowerThreshold"
               min="0"
               max="5000"
-              step="0.1"
+              step="1"
             />
             <div class="form-help">低于此值将触发下限报警</div>
           </div>
@@ -214,7 +214,7 @@ onUnmounted(() => {
               v-model="settings.upperThreshold"
               min="0"
               max="5000"
-              step="0.1"
+              step="1"
             />
             <div class="form-help">高于此值将触发上限报警</div>
           </div>

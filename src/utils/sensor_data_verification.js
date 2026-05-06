@@ -1,10 +1,38 @@
 /**
- * 传感器数据校验函数（仅支持单条JSON对象，无外部依赖）
+ * 获取配置的报警阈值（从localStorage读取，有默认值）
+ * @returns {Object} 包含lowerThreshold和upperThreshold的对象
+ */
+export function getAlarmThresholds() {
+  try {
+    const savedSettings = localStorage.getItem("sensorSettings");
+    if (savedSettings) {
+      const settings = JSON.parse(savedSettings);
+      return {
+        lowerThreshold: parseFloat(settings.settings?.lowerThreshold) || 0,
+        upperThreshold: parseFloat(settings.settings?.upperThreshold) || 5000,
+      };
+    }
+  } catch (e) {
+    console.error("读取报警阈值失败：", e);
+  }
+  // 默认值
+  return {
+    lowerThreshold: 0,
+    upperThreshold: 5000,
+  };
+}
+
+/**
+ * 传感器数据校验函数（支持动态报警阈值）
  * @param {any} data - 解析后的单条传感器数据（JSON对象）
+ * @param {Object} thresholds - 可选的阈值配置，不传则从localStorage读取
  * @returns {Object} 校验结果：{ valid: boolean, errors: Array<{ field: string, message: string }> }
  */
-export function validateSensorData(data) {
+export function validateSensorData(data, thresholds = null) {
   const result = { valid: true, errors: [] };
+
+  // 使用传入的阈值或从配置读取
+  const { lowerThreshold, upperThreshold } = thresholds || getAlarmThresholds();
 
   // 第一步：判断数据类型（仅支持非空普通对象）
   if (!(typeof data === "object" && data !== null && !Array.isArray(data))) {
@@ -18,7 +46,7 @@ export function validateSensorData(data) {
   }
 
   // 第二步：校验单条数据的核心字段
-  const itemErrors = validateSingleSensorItem(data);
+  const itemErrors = validateSingleSensorItem(data, { lowerThreshold, upperThreshold });
   if (itemErrors.length > 0) {
     result.valid = false;
     result.errors = itemErrors;
@@ -28,11 +56,12 @@ export function validateSensorData(data) {
 }
 
 /**
- * 校验单条传感器数据项（核心校验规则）
+ * 校验单条传感器数据项（核心校验规则，支持动态阈值）
  * @param {object} item - 单条传感器JSON对象
+ * @param {Object} thresholds - 阈值配置 { lowerThreshold, upperThreshold }
  * @returns {Array} 错误信息数组
  */
-function validateSingleSensorItem(item) {
+function validateSingleSensorItem(item, thresholds) {
   const errors = [];
 
   const pipeId = item.pipe_id || "未知管道";
@@ -40,6 +69,16 @@ function validateSingleSensorItem(item) {
   const parsedTime = item.parsed_time || "未知时间";
 
   const locationInfo = `[${pipeId} - ${flangeId} - ${parsedTime}]`;
+
+  // 获取阈值，确保有效
+  const lowerThreshold =
+    typeof thresholds?.lowerThreshold === "number" && !isNaN(thresholds.lowerThreshold)
+      ? thresholds.lowerThreshold
+      : 0;
+  const upperThreshold =
+    typeof thresholds?.upperThreshold === "number" && !isNaN(thresholds.upperThreshold)
+      ? thresholds.upperThreshold
+      : 5000;
 
   // 规则1：检查至少有一个pressure字段
   let hasPressureField = false;
@@ -49,7 +88,7 @@ function validateSingleSensorItem(item) {
       break;
     }
   }
-  
+
   if (!hasPressureField) {
     errors.push({
       field: "pressure",
@@ -66,10 +105,10 @@ function validateSingleSensorItem(item) {
           field: pressureField,
           message: `${locationInfo} ${pressureField} 必须为有效数字（非NaN）`,
         });
-      } else if (item[pressureField] < 0 || item[pressureField] > 5000) {
+      } else if (item[pressureField] < lowerThreshold || item[pressureField] > upperThreshold) {
         errors.push({
           field: pressureField,
-          message: `${locationInfo} ${pressureField} 必须在0-5000g之间（当前值：${item[pressureField]}）`,
+          message: `${locationInfo} ${pressureField} 必须在${lowerThreshold}-${upperThreshold}g之间（当前值：${item[pressureField]}）`,
         });
       }
     }

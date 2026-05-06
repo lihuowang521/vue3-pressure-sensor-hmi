@@ -41,8 +41,18 @@ const setQuickTimeRange = (duration) => {
       break;
   }
 
-  startTime.value = startDate.toISOString().slice(0, 16);
-  endTime.value = now.toISOString().slice(0, 16);
+  // 格式化本地时间为datetime-local格式 (YYYY-MM-DDTHH:mm)
+  const formatLocalDateTime = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  startTime.value = formatLocalDateTime(startDate);
+  endTime.value = formatLocalDateTime(now);
 };
 
 // 导出数据
@@ -183,7 +193,7 @@ const cleanupOldData = () => {
         </p>
         <p>上次导出时间：{{ lastExportTime }}</p>
         <p>导出文件格式：CSV</p>
-        <p>文件包含字段：时间戳、管线、法兰、传感器1-12</p>
+        <p>文件包含字段：时间戳、管线、法兰、温度、传感器1-12</p>
       </div>
     </div>
   </div>
