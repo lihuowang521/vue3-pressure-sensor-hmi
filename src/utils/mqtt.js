@@ -100,7 +100,7 @@ export const connectMqtt = () => {
           // 校验失败：记录日志+警告弹窗，但继续接收数据
           const errorMsg = errors.map((e) => e.message).join("；");
           console.error(`【${topic}】数据校验失败：`, errors);
-          
+
           // 通过Pinia显示警告弹窗
           try {
             const sensorStore = await import("@/stores/sensorStore").then((mod) =>
